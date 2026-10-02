@@ -32,13 +32,16 @@ Gallery Organizer organizes **photos and videos you have already exported** into
 
 The scripts preview changes before you apply them. They do not silently overwrite files with the same name; uncertain matches and destinations are reported for review.
 
-## File types to keep from an export
+## Sidecar files the scripts recognize
 
-- **Photos:** Examples include `.jpg`, `.jpeg`, `.heic`, `.heif`, `.png`, `.gif`, `.tif`, `.tiff`, `.dng`, and camera RAW files such as `.cr2`, `.cr3`, `.nef`, and `.arw`.
-- **Videos:** Examples include `.mov`, `.mp4`, `.m4v`, `.avi`, and `.mkv`. The `.mov` file next to a photo may be the video part of a Live Photo.
-- **Companion files:** `.xmp`, `.aae`, `.thm`, `.lrv`, `.dop`, and `.pp3` may carry edits, descriptions, thumbnails, previews, or other information associated with the media. They may not open like ordinary photos.
+These files accompany a photo or video rather than being the main image. The scripts try to keep them with the right media when the relationship can be confirmed:
 
-These are examples, not a complete list. **Back up the full export before applying changes. Keep unfamiliar companion files until you have checked the sorting results; do not delete them just because they do not look like photos.** A recognized extension alone does not guarantee that the script can identify a file's origin or safely pair it with another file.
+- **`.xmp`:** Photo or video information, such as descriptions and editing metadata.
+- **`.aae`:** Apple Photos editing information.
+- **`.thm` and `.lrv`:** A thumbnail and a smaller preview video, often supplied with camera footage.
+- **`.dop` and `.pp3`:** Editing settings saved by photo editing software.
+
+**Do not delete these sidecar files before sorting is complete; removing them may affect pairing or lose related information.**
 
 ## Getting started
 
