@@ -32,6 +32,14 @@ Gallery Organizer organizes **photos and videos you have already exported** into
 
 The scripts preview changes before you apply them. They do not silently overwrite files with the same name; uncertain matches and destinations are reported for review.
 
+## File types to keep from an export
+
+- **Photos:** Examples include `.jpg`, `.jpeg`, `.heic`, `.heif`, `.png`, `.gif`, `.tif`, `.tiff`, `.dng`, and camera RAW files such as `.cr2`, `.cr3`, `.nef`, and `.arw`.
+- **Videos:** Examples include `.mov`, `.mp4`, `.m4v`, `.avi`, and `.mkv`. The `.mov` file next to a photo may be the video part of a Live Photo.
+- **Companion files:** `.xmp`, `.aae`, `.thm`, `.lrv`, `.dop`, and `.pp3` may carry edits, descriptions, thumbnails, previews, or other information associated with the media. They may not open like ordinary photos.
+
+These are examples, not a complete list. **Back up the full export before applying changes. Keep unfamiliar companion files until you have checked the sorting results; do not delete them just because they do not look like photos.** A recognized extension alone does not guarantee that the script can identify a file's origin or safely pair it with another file.
+
 ## Getting started
 
 Edit [config.ini](config.ini) to choose your photo folder and destinations. Run the main organizer on a batch in `Incoming/Stage0/`. The first command previews the plan; run the second only after checking it:
