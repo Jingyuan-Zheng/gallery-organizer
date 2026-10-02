@@ -87,10 +87,10 @@ class LanguageTests(unittest.TestCase):
                 self.assertIn("not a valid date", result.stderr)
                 self.assertNotRegex(result.stderr, HAN)
 
-    def test_both_languages_plan_the_same_screenshot_destination(self):
+    def test_screenshot_destinations_follow_selected_language(self):
         chinese, english = self.copy_for("zh"), self.copy_for("en")
-        destination = self.media / "Gallery" / "Screenshots" / "日期未知" / "Screenshot_2024.png"
-        for folder in (chinese, english):
+        for folder, date_folder in ((chinese, "日期未知"), (english, "Date Unknown")):
+            destination = self.media / "Gallery" / "Screenshots" / date_folder / "Screenshot_2024.png"
             result = self.run_script(folder, "organize_leftover_media.py", self.batch)
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertIn(str(destination), result.stdout)
@@ -99,7 +99,36 @@ class LanguageTests(unittest.TestCase):
                 displayed = displayed.replace(str(self.batch / "Screenshot_2024.png"), "<source>")
                 self.assertNotRegex(displayed, HAN)
         self.assertTrue((self.batch / "Screenshot_2024.png").exists())
-        self.assertFalse(destination.exists())
+        self.assertFalse((self.media / "Gallery" / "Screenshots").exists())
+
+        result = self.run_script(english, "organize_leftover_media.py", self.batch, "--apply")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue((self.media / "Gallery" / "Screenshots" / "Date Unknown" / "Screenshot_2024.png").exists())
+        self.assertFalse((self.media / "Gallery" / "Screenshots" / "日期未知").exists())
+
+    def test_all_generated_category_names_follow_selected_language(self):
+        for language in ("zh", "en"):
+            folder = self.copy_for(language)
+            code = (
+                "import json, organize_leftover_media as m; "
+                "print(json.dumps({k: m.category_folder_name(m.SecondaryDecision(k, v, '', None, False)) "
+                "for k, v in {'screen': m.CATEGORY_SCREEN, 'download': m.CATEGORY_DOWNLOAD, "
+                "'unknown': m.CATEGORY_UNKNOWN, 'time': m.CATEGORY_TIME, "
+                "'timezone': m.CATEGORY_TIMEZONE, 'live': m.CATEGORY_LIVE, "
+                "'sidecar': m.CATEGORY_SIDECAR, 'compat': m.CATEGORY_COMPAT, "
+                "'corrupt': m.CATEGORY_CORRUPT, 'gallery': m.CATEGORY_GALLERY}.items()}, ensure_ascii=True))"
+            )
+            result = subprocess.run(
+                [sys.executable, "-c", code], cwd=folder,
+                text=True, capture_output=True, timeout=30,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            names = json.loads(result.stdout)
+            self.assertEqual(len(names), 10)
+            self.assertEqual(names["download"], "下载与保存" if language == "zh" else "Downloads and Saved Images")
+            self.assertEqual(names["gallery"], "可确认相机媒体" if language == "zh" else "Confirmed Camera Media")
+            if language == "en":
+                self.assertTrue(all(not HAN.search(name) for name in names.values()))
 
     def test_non_macos_rejection_uses_configured_language(self):
         for language in ("zh", "en"):

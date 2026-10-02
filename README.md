@@ -91,30 +91,30 @@ This example follows one batch through the default folders. Folder locations can
     │   └── 2024/2024-06/IMG_0300.HEIC
     ├── Screenshots/
     │   ├── 2024/2024-06/Screenshot.png
-    │   └── 日期未知/ScreenRecording.mov
+    │   └── Date Unknown/ScreenRecording.mov
     ├── OtherMedia/
-    │   ├── 下载与保存/2024/2024-06/saved-image.jpg
-    │   └── 来源无法确认/日期未知/unknown.jpg
+    │   ├── Downloads and Saved Images/2024/2024-06/saved-image.jpg
+    │   └── Origin Unclear/Date Unknown/unknown.jpg
     ├── NeedsRepair/
-    │   ├── 拍摄时间缺失或异常/日期未知/photo.jpg
-    │   └── Sidecar关联异常/日期未知/IMG_0400.xmp
+    │   ├── Missing or Incorrect Capture Time/Date Unknown/photo.jpg
+    │   └── Sidecar Association Issues/Date Unknown/IMG_0400.xmp
     ├── Duplicate/                    ← confirmed duplicates, kept separately
     │   ├── Incoming/Stage0/Batch A/IMG_0100.HEIC
     │   ├── FormatVariants/Incoming/Stage0/Batch A/IMG_0100.JPG
-    │   └── Unsorted/截图与录屏/2024/2024-06/2024-06-15/
+    │   └── Unsorted/Screenshots and Screen Recordings/2024/2024-06/2024-06-15/
     │       └── SHA256-…/Screenshot.png
     ├── MetadataReview/               ← JPEG review files and CSV reports
     ├── MetadataRepairBackups/         ← originals backed up for JPEG repair
     └── MetadataRepairWork/            ← temporary JPEG repair files
 ```
 
-The tree shows possible results, not folders that every run creates. `Stage0/Batch A` moves to `Stage1/Batch A` only after a successful main pass, so those two example positions represent different moments. A known capture date normally gives `YYYY/YYYY-MM/`; a same-name conflict may add `YYYY-MM-DD/`. `日期未知` means the date could not be confirmed. Main-pass duplicate folders mirror the source path; second-pass duplicates are grouped by category and date. The Chinese category names shown above are actual folder names used by the sorting rules.
+The tree shows possible results, not folders that every run creates. `Stage0/Batch A` moves to `Stage1/Batch A` only after a successful main pass, so those two example positions represent different moments. A known capture date normally gives `YYYY/YYYY-MM/`; a same-name conflict may add `YYYY-MM-DD/`. `Date Unknown` means the date could not be confirmed. Main-pass duplicate folders mirror the source path; second-pass duplicates are grouped by category and date. The example shows the default English category names. Setting `language = zh` uses Chinese category names instead; changing the setting does not rename existing folders or user-supplied paths.
 
 ### `[general]`
 
 | Setting | Values | Purpose |
 | --- | --- | --- |
-| `language` | `en` or `zh` | Terminal language. English is the default; choose `zh` for the Chinese interface. |
+| `language` | `en` or `zh` | Language for terminal messages and generated category folders. English is the default; choose `zh` for Chinese. Existing folders are not renamed. |
 
 ### `[paths]`
 

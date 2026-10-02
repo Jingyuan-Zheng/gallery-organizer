@@ -4236,6 +4236,26 @@ CATEGORY_COMPAT = "云端格式兼容性问题"
 CATEGORY_CORRUPT = "媒体可能损坏"
 CATEGORY_GALLERY = "可确认相机媒体"
 
+# Keep classification labels stable; only the generated folder segments follow
+# the selected interface language. User-configured roots and filenames stay as is.
+ENGLISH_CATEGORY_FOLDERS = {
+    "screen": "Screenshots and Screen Recordings",
+    "download": "Downloads and Saved Images",
+    "unknown": "Origin Unclear",
+    "time": "Missing or Incorrect Capture Time",
+    "timezone": "Time Zone Unclear",
+    "live": "Live Photo Association Issues",
+    "sidecar": "Sidecar Association Issues",
+    "compat": "Cloud Format Compatibility Issues",
+    "corrupt": "Possibly Damaged Media",
+    "gallery": "Confirmed Camera Media",
+}
+UNKNOWN_DATE_FOLDER = "日期未知" if LANGUAGE == "zh" else "Date Unknown"
+
+
+def category_folder_name(decision: "SecondaryDecision") -> str:
+    return decision.label if LANGUAGE == "zh" else ENGLISH_CATEGORY_FOLDERS[decision.key]
+
 WHATSAPP_MEDIA_RE = re.compile(r"^(?:IMG|VID)-\d{8}-WA\d+", re.IGNORECASE)
 
 # 第二阶段专用：只有文件名本身足够明确指向某个聊天/社交应用时才使用。
@@ -4799,21 +4819,21 @@ def secondary_category_root(decision: SecondaryDecision) -> Path:
     if decision.key == "screen":
         return SCREEN_ROOT
     if decision.key == "download":
-        return OTHER_MEDIA_ROOT / CATEGORY_DOWNLOAD
+        return OTHER_MEDIA_ROOT / category_folder_name(decision)
     if decision.key == "unknown":
-        return OTHER_MEDIA_ROOT / CATEGORY_UNKNOWN
+        return OTHER_MEDIA_ROOT / category_folder_name(decision)
     if decision.key == "time":
-        return REPAIR_MEDIA_ROOT / CATEGORY_TIME
+        return REPAIR_MEDIA_ROOT / category_folder_name(decision)
     if decision.key == "timezone":
-        return REPAIR_MEDIA_ROOT / CATEGORY_TIMEZONE
+        return REPAIR_MEDIA_ROOT / category_folder_name(decision)
     if decision.key == "live":
-        return REPAIR_MEDIA_ROOT / CATEGORY_LIVE
+        return REPAIR_MEDIA_ROOT / category_folder_name(decision)
     if decision.key == "sidecar":
-        return REPAIR_MEDIA_ROOT / CATEGORY_SIDECAR
+        return REPAIR_MEDIA_ROOT / category_folder_name(decision)
     if decision.key == "compat":
-        return REPAIR_MEDIA_ROOT / CATEGORY_COMPAT
+        return REPAIR_MEDIA_ROOT / category_folder_name(decision)
     if decision.key == "corrupt":
-        return REPAIR_MEDIA_ROOT / CATEGORY_CORRUPT
+        return REPAIR_MEDIA_ROOT / category_folder_name(decision)
     raise ValueError(f"未知第二阶段类别：{decision.key}")
 
 
@@ -5022,7 +5042,7 @@ def _group_bundle_hash8(group: SecondaryGroup) -> str:
 
 
 def _global_duplicate_base_directory(group: SecondaryGroup, decision: SecondaryDecision) -> Path:
-    root = SECOND_STAGE_DUPLICATE_ROOT / decision.label
+    root = SECOND_STAGE_DUPLICATE_ROOT / category_folder_name(decision)
     try:
         hash_part = f"SHA256-{_group_bundle_hash8(group)}"
     except Exception:
@@ -5031,7 +5051,7 @@ def _global_duplicate_base_directory(group: SecondaryGroup, decision: SecondaryD
     if decision.timestamp is not None and decision.use_date:
         year, month, day = decision.timestamp[0], decision.timestamp[1], decision.timestamp[2]
         return root / f"{year:04d}" / f"{year:04d}-{month:02d}" / f"{year:04d}-{month:02d}-{day:02d}" / hash_part
-    return root / "日期未知" / hash_part
+    return root / UNKNOWN_DATE_FOLDER / hash_part
 
 
 def plan_global_duplicate_group(
@@ -5092,7 +5112,7 @@ def _standard_category_directories(group: SecondaryGroup, decision: SecondaryDec
     root = secondary_category_root(decision)
     ts = decision.timestamp if decision.use_date else None
     if ts is None:
-        return [("unknown-date", root / "日期未知")]
+        return [("unknown-date", root / UNKNOWN_DATE_FOLDER)]
 
     year, month, day = ts[0], ts[1], ts[2]
     month_dir = root / f"{year:04d}" / f"{year:04d}-{month:02d}"
@@ -5102,10 +5122,10 @@ def _standard_category_directories(group: SecondaryGroup, decision: SecondaryDec
 
 def _second_stage_duplicate_destination(source: Path, decision: SecondaryDecision, group: SecondaryGroup) -> Path:
     ts = decision.timestamp if decision.use_date else None
-    root = SECOND_STAGE_DUPLICATE_ROOT / decision.label
+    root = SECOND_STAGE_DUPLICATE_ROOT / category_folder_name(decision)
     hash_part = f"SHA256-{_group_hash8(group)}"
     if ts is None:
-        directory = root / "日期未知" / hash_part
+        directory = root / UNKNOWN_DATE_FOLDER / hash_part
     else:
         year, month, day = ts[0], ts[1], ts[2]
         directory = (
@@ -5183,7 +5203,7 @@ def plan_secondary_category_group(
 
     # 只有月份/日期（或日期未知根目录）确实发生同名不同内容冲突，才计算整组 SHA-256。
     # 这是最后一级“保持原文件名但避免撞名”的标准化目录。
-    base_dir = candidates[-1][1] if candidates else secondary_category_root(decision) / "日期未知"
+    base_dir = candidates[-1][1] if candidates else secondary_category_root(decision) / UNKNOWN_DATE_FOLDER
     try:
         hash_dir = base_dir / f"SHA256-{_group_hash8(group)}"
     except Exception as exc:
