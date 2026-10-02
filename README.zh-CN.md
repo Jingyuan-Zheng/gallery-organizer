@@ -2,8 +2,6 @@
 
 [English README](README.md)
 
-Gallery Organizer 用来整理**已经导出的照片和视频文件**。它不能从 iPhone、相机或其他设备导出照片。请先用其他工具完成导出，再用本项目整理导出的文件。
-
 ## 为什么需要它？
 
 - **编号重复。** 苹果设备和数码相机可能重复使用编号文件名，不同时期的不同照片也可能同名。
@@ -132,6 +130,7 @@ python3 organize_leftover_media.py "/实际路径/Incoming/Stage1/一批照片" 
 | `confirmed_gps_derivative_utc` | `YYYYMMDDTHHMMSSZ` | 上述照片的已核实 GPS UTC 时刻，须和文件名一起填写；一般留空。 |
 | `validated_filename_sequence` | 完整文件名，多个用逗号分隔 | 已逐张核实文件名时间的照片清单；一般留空。 |
 
-## 兼容性
+## 注意事项
 
-Gallery Organizer **仅支持 macOS**。在 Windows 或 Linux 上，脚本会显示提示并退出，不会处理文件。
+- **先导出，再整理：** Gallery Organizer 只整理已经导出的照片和视频，不能从 iPhone、相机或其他设备导出照片。请先用其他工具导出。
+- **仅支持 macOS：** 在 Windows 或 Linux 上，脚本会显示提示并退出，不会处理文件。

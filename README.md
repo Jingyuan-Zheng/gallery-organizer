@@ -2,8 +2,6 @@
 
 [中文说明](README.zh-CN.md)
 
-Gallery Organizer organizes **photos and videos you have already exported** into folders. It does not export photos from an iPhone, camera, or any other device. Export your library with another tool first, then use this project to sort the resulting files.
-
 ## Why use it?
 
 - **Repeated filenames.** Apple devices and digital cameras can reuse numbered names, so different photos from different periods may have the same filename.
@@ -132,6 +130,7 @@ These settings affect only `repair_photo_metadata.py`. Set `utc_offset`, `auto_f
 | `confirmed_gps_derivative_utc` | `YYYYMMDDTHHMMSSZ` | Verified GPS UTC time for that derivative; set together with its filename. |
 | `validated_filename_sequence` | Comma-separated full filenames | Photos whose filename times have been individually verified; usually blank. |
 
-## Compatibility
+## Notes
 
-Gallery Organizer runs on **macOS only**. On Windows and Linux, the scripts show a message and exit without processing files.
+- **Export first:** Gallery Organizer organizes photos and videos you have already exported. It cannot export photos from an iPhone, camera, or other device; use another tool to export them first.
+- **macOS only:** On Windows and Linux, the scripts show a message and exit without processing files.
