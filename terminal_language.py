@@ -1,8 +1,8 @@
-"""Translate program-owned terminal messages without changing sorting decisions.
+"""Localize terminal messages while preserving user paths and media filenames.
 
-English strings are prepared offline and shipped with the project. Translation
-never runs against media files, reports, or config values; Chinese mode leaves
-standard streams untouched.
+English is the source language in the entry scripts. Chinese translations live in
+zh_messages.json. The older English catalog remains a fallback for Chinese
+recognition terms that are deliberately kept in matching rules and metadata.
 """
 from __future__ import annotations
 
@@ -14,28 +14,39 @@ import re
 import sys
 from typing import TextIO
 
-_CATALOG: dict[str, str] | None = None
-_PATTERN: re.Pattern[str] | None = None
-_ENABLED = False
+_LANGUAGE = "en"
+_CATALOGS: dict[str, dict[str, str]] = {}
+_PATTERNS: dict[str, re.Pattern[str]] = {}
 
 
-def _prepare() -> None:
-    global _CATALOG, _PATTERN
-    if _CATALOG is not None:
+def _prepare(language: str) -> None:
+    if language in _CATALOGS:
         return
-    source = Path(__file__).with_name("en_messages.json")
-    catalog = json.loads(source.read_text(encoding="utf-8"))
-    _CATALOG = {key: value for key, value in catalog.items() if value and key != value}
-    _PATTERN = re.compile("|".join(re.escape(key) for key in sorted(_CATALOG, key=len, reverse=True)))
+    filename = "zh_messages.json" if language == "zh" else "en_messages.json"
+    catalog = json.loads(Path(__file__).with_name(filename).read_text(encoding="utf-8"))
+    if language == "zh":
+        catalog = {key: value for key, value in catalog.items() if len(key) >= 4 and key != value}
+    else:
+        catalog = {key: value for key, value in catalog.items() if key != value}
+    _CATALOGS[language] = catalog
+    keys = sorted(catalog, key=len, reverse=True)
+    if language == "zh":
+        parts = []
+        for key in keys:
+            left = r"(?<![A-Za-z0-9])" if key[0].isalnum() else ""
+            right = r"(?![A-Za-z0-9])" if key[-1].isalnum() else ""
+            parts.append(left + re.escape(key) + right)
+    else:
+        parts = [re.escape(key) for key in keys]
+    _PATTERNS[language] = re.compile("|".join(parts))
 
 
 def _preserve_media_paths(text: str) -> tuple[str, list[str]]:
     if "/" not in text:
         return text, []
     paths: list[str] = []
-    # Paths may come from user input outside BACKUP_ROOT in validation errors.
-    # A slash inside ordinary prose (such as XMP/AAE) is not a path boundary.
     pattern = re.compile(r"(?:(?<!\S)|(?<=[：:(]))/(?=[^\s])[^\r\n；，。：（）]*")
+
     def hide(match: re.Match[str]) -> str:
         value = match.group()
         trailing_message = ""
@@ -45,28 +56,48 @@ def _preserve_media_paths(text: str) -> tuple[str, list[str]]:
                 break
         paths.append(value)
         return f"\x00PATH{len(paths) - 1}\x00{trailing_message}"
+
     return pattern.sub(hide, text), paths
 
 
-def translate_terminal_text(text: str) -> str:
-    if not _ENABLED or not isinstance(text, str) or not re.search(r"[\u3400-\u9fff]", text):
-        return text
-    _prepare()
+def _translate(text: str, language: str) -> str:
+    _prepare(language)
     protected, paths = _preserve_media_paths(text)
-    assert _PATTERN is not None and _CATALOG is not None
-    translated = _PATTERN.sub(lambda match: _CATALOG[match.group()], protected)
+    pattern = _PATTERNS[language]
+    catalog = _CATALOGS[language]
+    translated = pattern.sub(lambda match: catalog[match.group()], protected)
     for index, path in enumerate(paths):
         translated = translated.replace(f"\x00PATH{index}\x00", path)
     return translated
 
 
-class _EnglishStream:
+def translate_terminal_text(text: str) -> str:
+    if not isinstance(text, str):
+        return text
+    if _LANGUAGE == "en" and not re.search(r"[\u3400-\u9fff]", text):
+        return text
+    return _translate(text, _LANGUAGE)
+
+
+def localized_message(message: str) -> str:
+    if _LANGUAGE == "en":
+        return message
+    _prepare("zh")
+    return _CATALOGS["zh"].get(message, message)
+
+
+def localized_format(message: str, **values: object) -> str:
+    """Translate a whole template before inserting paths and other user data."""
+    return localized_message(message).format(**values)
+
+
+class _LocalizedStream:
     def __init__(self, stream: TextIO) -> None:
         self._stream = stream
 
-    def write(self, text: str) -> int:
-        self._stream.write(translate_terminal_text(text))
-        return len(text)
+    def write(self, message: str) -> int:
+        self._stream.write(translate_terminal_text(message))
+        return len(message)
 
     def flush(self) -> None:
         self._stream.flush()
@@ -76,15 +107,13 @@ class _EnglishStream:
 
 
 def install_terminal_language(language: str) -> None:
-    global _ENABLED
-    if language != "en":
-        return
-    _ENABLED = True
-    _prepare()
-    if not isinstance(sys.stdout, _EnglishStream):
-        sys.stdout = _EnglishStream(sys.stdout)
-    if not isinstance(sys.stderr, _EnglishStream):
-        sys.stderr = _EnglishStream(sys.stderr)
+    global _LANGUAGE
+    _LANGUAGE = language
+    _prepare(language)
+    if not isinstance(sys.stdout, _LocalizedStream):
+        sys.stdout = _LocalizedStream(sys.stdout)
+    if not isinstance(sys.stderr, _LocalizedStream):
+        sys.stderr = _LocalizedStream(sys.stderr)
 
 
 def localized_input(prompt: str = "") -> str:
@@ -92,7 +121,7 @@ def localized_input(prompt: str = "") -> str:
 
 
 class LocalizedArgumentParser(argparse.ArgumentParser):
-    """Translate help text before argparse wraps it into terminal lines."""
+    """Translate help before argparse wraps it into terminal lines."""
 
     def __init__(self, *args, **kwargs):
         for field in ("description", "epilog"):

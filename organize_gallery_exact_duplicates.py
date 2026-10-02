@@ -45,7 +45,7 @@ from gallery_config import (
     HEIF_CONVERT_TOOL, FFMPEG_TOOL,
 )
 install_terminal_language(LANGUAGE)
-if LANGUAGE == "en":
+if LANGUAGE == "zh":
     input = localized_input
 
 HASH_WORKERS = min(8, max(1, os.cpu_count() or 4))
@@ -226,7 +226,7 @@ def annotation_merge_analysis(source_xmp: Path, keep_xmp: Path) -> tuple[bool, l
     source = read_xmp_annotations(source_xmp)
     keep = read_xmp_annotations(keep_xmp)
     if source is None or keep is None:
-        return False, ["XMP 无法结构化读取"]
+        return False, ['XMP cannot be structured read']
     changes: list[str] = []
     conflicts: list[str] = []
     for key in XMP_LIST_TAGS:
@@ -238,22 +238,22 @@ def annotation_merge_analysis(source_xmp: Path, keep_xmp: Path) -> tuple[bool, l
             keep_values = [keep_values]
         additions = [value for value in source_values if value not in keep_values]
         if additions:
-            changes.append(f"{key} 新增 {additions}")
+            changes.append(f'{key} Add new {additions}')
     for key in XMP_REGION_GROUPS:
         if key not in source:
             continue
         if key not in keep:
-            changes.append(f"{key} 新增完整人脸区域")
+            changes.append(f'{key} Add complete face area')
         elif source[key] != keep[key]:
-            conflicts.append(f"{key} 人脸区域冲突")
+            conflicts.append(f'{key} Face area conflict')
     if "Rating" in source:
         if "Rating" not in keep:
-            changes.append(f"Rating 新增 {source['Rating']}")
+            changes.append(f"Rating added {source['Rating']}")
         elif source["Rating"] != keep["Rating"]:
-            conflicts.append(f"Rating 冲突：{keep['Rating']} vs {source['Rating']}")
+            conflicts.append(f"Rating Conflict: {keep['Rating']} vs {source['Rating']}")
     if conflicts:
         return False, conflicts
-    return True, changes or ["没有新增字段；来源 XMP 为冗余副本"]
+    return True, changes or ['No new fields; source XMP is a redundant copy']
 
 
 def visual_merge_plan(
@@ -383,7 +383,7 @@ def merge_xmp_annotations(source_xmp: Path, keep_xmp: Path, heic: Path) -> bool:
         if result.returncode != 0:
             return False
         verified, remaining = annotation_merge_analysis(source_xmp, temp_xmp)
-        if not verified or remaining != ["没有新增字段；来源 XMP 为冗余副本"]:
+        if not verified or remaining != ['No new fields; source XMP is a redundant copy']:
             return False
         os.replace(temp_xmp, keep_xmp)
         return True
@@ -606,7 +606,7 @@ def duplicate_target(source: Path) -> Path:
     try:
         relative = source.resolve(strict=False).relative_to(BACKUP_ROOT.resolve(strict=False))
     except ValueError as exc:
-        raise ValueError(f"来源不在 Backup Apple 中：{source}") from exc
+        raise ValueError(f'The source is not in Backup Apple: {source}') from exc
     return DUPLICATE_ROOT / relative
 
 
@@ -750,19 +750,19 @@ def matching_sidecar_moves(
                 return None
             planned.append((
                 sidecar, matching_keeps[0], sha256(sidecar), sha256(matching_keeps[0]),
-                "AAE 实际 adjustmentData 相同；仅渲染标记或时间不同",
+                'AEI actual adjustmentData is the same; only the labels or time differ.',
             ))
             continue
         if (sidecar.suffix.casefold() == ".xmp" and len(matching_keeps) == 1
                 and xmp_annotations_equivalent(sidecar, matching_keeps[0])):
             planned.append((
                 sidecar, matching_keeps[0], sha256(sidecar), sha256(matching_keeps[0]),
-                "人物、人脸区域和标签内容相同；仅 XMP 数组顺序不同",
+                'The person, face area and tag content are the same; only the order of the XMP array is different.',
             ))
             continue
         if not siblings:
             if sidecar.suffix.casefold() == ".xmp" and xmp_is_metadata_only(sidecar):
-                planned.append((sidecar, None, sha256(sidecar), None, "仅含基础 metadata 的 XMP"))
+                planned.append((sidecar, None, sha256(sidecar), None, 'XMP containing only basic metadata'))
                 continue
             return None
         matching_keeps = [
@@ -771,10 +771,10 @@ def matching_sidecar_moves(
         ]
         if len(matching_keeps) == 1:
             digest = sha256(sidecar)
-            planned.append((sidecar, matching_keeps[0], digest, digest, "SHA-256 精确重复边车"))
+            planned.append((sidecar, matching_keeps[0], digest, digest, 'SHA-256 precise repeated side wheel'))
             continue
         if sidecar.suffix.casefold() == ".xmp" and xmp_is_metadata_only(sidecar):
-            planned.append((sidecar, None, sha256(sidecar), None, "仅含基础 metadata 的 XMP"))
+            planned.append((sidecar, None, sha256(sidecar), None, 'XMP containing only basic metadata'))
             continue
         return None
     return planned
@@ -784,18 +784,18 @@ def main() -> int:
     parser = LocalizedArgumentParser()
     parser.add_argument(
         "directory", type=Path,
-        help="要整理的目录（必须位于 gallery_config.py 的 MAIN_LIBRARY_ROOT 内）",
+        help='The directory to be organized (must be located within the MAIN_LIBRARY_ROOT of gallery_config.py)',
     )
-    parser.add_argument("--apply", action="store_true", help="实际移动已确认的精确重复副本")
+    parser.add_argument("--apply", action="store_true", help='Move confirmed exact duplicate copies')
     args = parser.parse_args()
     source_root = args.directory.expanduser().resolve(strict=False)
     if not source_root.is_dir():
-        print(f"指定目录不存在：{source_root}", file=sys.stderr)
+        print(f'The specified directory does not exist: {source_root}', file=sys.stderr)
         return 2
     try:
         source_root.relative_to(LIBRARY_ROOT.resolve(strict=False))
     except ValueError:
-        print(f"指定目录必须位于主库内：{LIBRARY_ROOT}", file=sys.stderr)
+        print(f'The specified directory must be located within the main library: {LIBRARY_ROOT}', file=sys.stderr)
         return 2
     if not DUPLICATE_ROOT.is_dir() and args.apply:
         DUPLICATE_ROOT.mkdir(parents=True, exist_ok=True)
@@ -809,9 +809,9 @@ def main() -> int:
     # source, target, reference, source_hash, reference_hash
     moves: list[tuple[Path, Path, Path | None, str, str | None]] = []
     merges: list[tuple[Path, Path, Path, list[str]]] = []
-    print(f"扫描目录：{source_root}")
-    print(f"重复副本目录：{DUPLICATE_ROOT}")
-    print(f"精确重复组：{len(groups)}")
+    print(f'Scanning directory: {source_root}')
+    print(f'Duplicate copy directory: {DUPLICATE_ROOT}')
+    print(f'Exact repetition group: {len(groups)}')
     protected_media = 0
     planned_sidecars: set[Path] = set()
     score = lambda path: canonical_score(path, source_root)
@@ -832,29 +832,25 @@ def main() -> int:
                     if is_plain_cross_number_jpeg_duplicate(source, keep, sidecars_by_key):
                         target = duplicate_target(source)
                         print(
-                            f"MOVE  {source}\n  ->  {target}\n"
-                            "  原因：跨编号 JPEG 图像数据相同，且无可配对边车；"
-                            "同编号 HEIC 与其拍摄时间不同，不关联"
+                            f'MOVE  {source}\n  ->  {target}\n  Reason: The JPEG image data with different numbering are identical and cannot be paired with the side car; the HEIC with the same numbering has a different shooting time and is not associated.'
                         )
                         moves.append((source, target, keep, sha256(source), digest))
                         continue
                     protected_media += 1
                     print(
-                        f"PROTECT {source}\n"
-                        "  原因：画面像素相同但元数据无法安全合并"
+                        f'PROTECT {source}\n  Reason: The screen pixels are identical but the metadata cannot be safely merged.'
                     )
                     continue
                 source_xmp, keep_xmp, heic, merge_details, merge_safe = merge
                 if not merge_safe:
                     protected_media += 1
                     print(
-                        f"PROTECT {source}\n  原因：XMP 字段冲突\n"
+                        f'PROTECT {source}\n  Reason: XMP field conflict\n'
                         + "\n".join(f"  {detail}" for detail in merge_details)
                     )
                     continue
                 print(
-                    f"MERGE XMP  {source_xmp}\n  ->  {keep_xmp}\n"
-                    f"  GPS 权威来源：{heic}\n"
+                    f'MERGE XMP  {source_xmp}\n  ->  {keep_xmp}\n  GPS authoritative source: {heic}\n'
                     + "\n".join(f"  {detail}" for detail in merge_details)
                 )
                 merges.append((source_xmp, keep_xmp, heic, merge_details))
@@ -862,7 +858,7 @@ def main() -> int:
                 print(f"MOVE  {source}\n  ->  {target}")
                 moves.append((source, target, keep, sha256(source), digest))
                 xmp_target = duplicate_target(source_xmp)
-                print(f"MOVE SIDECAR  {source_xmp}\n  ->  {xmp_target}\n  原因：已合并其用户标注")
+                print(f'MOVE SIDECAR  {source_xmp}\n  ->  {xmp_target}\n  Reason: Its user annotations have been merged.')
                 moves.append((source_xmp, xmp_target, None, sha256(source_xmp), None))
                 planned_sidecars.add(source_xmp)
                 numbered_aae = source.with_suffix(".AAE")
@@ -872,9 +868,7 @@ def main() -> int:
                         and adjustment_data_hash(numbered_aae) == adjustment_data_hash(base_aae)):
                     aae_target = duplicate_target(numbered_aae)
                     print(
-                        f"MOVE SIDECAR  {numbered_aae}\n  ->  {aae_target}\n"
-                        f"  KEEP SIDECAR  {base_aae}\n"
-                        "  原因：AAE 实际 adjustmentData 相同；为去除 JPEG 编号归档冗余配套文件"
+                        f'MOVE SIDECAR  {numbered_aae}\n  ->  {aae_target}\n  KEEP SIDECAR  {base_aae}\n  Reason: AAE actual adjustmentData is the same; to remove the JPEG numbering archival redundancy supporting files.'
                     )
                     moves.append((numbered_aae, aae_target, base_aae, sha256(numbered_aae), sha256(base_aae)))
                     planned_sidecars.add(numbered_aae)
@@ -884,7 +878,7 @@ def main() -> int:
             )
             if sidecar_moves is None:
                 protected_media += 1
-                print(f"PROTECT {source}\n  原因：同名边车无法与保留项组成精确重复配对")
+                print(f'PROTECT {source}\n  Reason: The same-named side car cannot be precisely paired with the retained item.')
                 continue
             target = duplicate_target(source)
             print(f"MOVE  {source}\n  ->  {target}")
@@ -893,13 +887,11 @@ def main() -> int:
                 sidecar_target = duplicate_target(sidecar)
                 if sidecar_keep is None:
                     print(
-                        f"MOVE SIDECAR  {sidecar}\n  ->  {sidecar_target}\n"
-                        f"  原因：{reason}，随精确重复照片归档"
+                        f'MOVE SIDECAR  {sidecar}\n  ->  {sidecar_target}\n  Reason: {reason}, archived with precise duplicate photos'
                     )
                 else:
                     print(
-                        f"MOVE SIDECAR  {sidecar}\n  ->  {sidecar_target}\n"
-                        f"  KEEP SIDECAR  {sidecar_keep}\n  原因：{reason}"
+                        f'MOVE SIDECAR  {sidecar}\n  ->  {sidecar_target}\n  KEEP SIDECAR  {sidecar_keep}\n  Reason: {reason}'
                     )
                 moves.append((sidecar, sidecar_target, sidecar_keep, sidecar_hash, sidecar_keep_hash))
                 planned_sidecars.add(sidecar)
@@ -909,9 +901,7 @@ def main() -> int:
             continue
         target = duplicate_target(numbered_aae)
         print(
-            f"MOVE SIDECAR  {numbered_aae}\n  ->  {target}\n"
-            f"  KEEP SIDECAR  {canonical_aae}\n"
-            "  原因：AAE 实际 adjustmentData 相同；允许清理 JPEG 的复制编号"
+            f'MOVE SIDECAR  {numbered_aae}\n  ->  {target}\n  KEEP SIDECAR  {canonical_aae}\n  Reason: AAE actual adjustmentData is the same; allows clearing the copy numbers of JPEG files.'
         )
         moves.append((numbered_aae, target, canonical_aae, sha256(numbered_aae), sha256(canonical_aae)))
         planned_sidecars.add(numbered_aae)
@@ -922,10 +912,7 @@ def main() -> int:
             continue
         target = duplicate_target(source)
         print(
-            f"MOVE STREAM-EQUIVALENT MOV  {source}\n  ->  {target}\n"
-            f"  KEEP MOV  {keep}\n"
-            "  原因：视频、音频和 Apple 元数据流逐流 SHA-256 完全相同；"
-            "仅 QuickTime 容器时间不同"
+            f'MOVE STREAM-EQUIVALENT MOV  {source}\n  ->  {target}\n  KEEP MOV  {keep}\n  Reason: The video, audio, and Apple metadata streams are SHA-256 identical in every byte; only the QuickTime container timestamps differ.'
         )
         moves.append((source, target, keep, sha256(source), sha256(keep)))
         already_planned_sources.add(source)
@@ -933,10 +920,8 @@ def main() -> int:
     for jpeg, heic, has_live_photo_mov in redundant_jpeg_renderings(source_root):
         target = duplicate_target(jpeg)
         print(
-            f"MOVE COMPAT JPEG  {jpeg}\n  ->  {target}\n"
-            f"  KEEP HEIC  {heic}\n"
-            "  原因：同名 HEIC/JPEG 画面等效且无 JPEG XMP；"
-            + ("保留同名 Live Photo MOV" if has_live_photo_mov else "非 Live Photo 组")
+            f'MOVE COMPAT JPEG  {jpeg}\n  ->  {target}\n  KEEP HEIC  {heic}\n  Reason: Same-named HEIC/JPEG image equivalent and no JPEG XMP;'
+            + ('Keep the same name Live Photo MOV' if has_live_photo_mov else 'Non Live Photo group')
         )
         moves.append((jpeg, target, heic, sha256(jpeg), sha256(heic)))
 
@@ -947,20 +932,19 @@ def main() -> int:
         if not merge_safe:
             protected_media += 1
             print(
-                f"PROTECT {jpeg}\n  原因：XMP 字段冲突\n"
+                f'PROTECT {jpeg}\n  Reason: XMP field conflict\n'
                 + "\n".join(f"  {detail}" for detail in merge_details)
             )
             continue
         print(
-            f"MERGE HEIC XMP  {source_xmp}\n  ->  {heic_xmp}\n"
-            f"  GPS 权威来源：{heic}\n"
+            f'MERGE HEIC XMP  {source_xmp}\n  ->  {heic_xmp}\n  GPS authoritative source: {heic}\n'
             + "\n".join(f"  {detail}" for detail in merge_details)
         )
         merges.append((source_xmp, heic_xmp, heic, merge_details))
         jpeg_target = duplicate_target(jpeg)
         xmp_target = duplicate_target(source_xmp)
         print(f"MOVE COMPAT EDITED JPEG  {jpeg}\n  ->  {jpeg_target}")
-        print(f"MOVE SIDECAR  {source_xmp}\n  ->  {xmp_target}\n  原因：人脸信息已转移到 HEIC 旁车")
+        print(f'MOVE SIDECAR  {source_xmp}\n  ->  {xmp_target}\n  Reason: Face annotations were transferred to the HEIC sidecar.')
         moves.append((jpeg, jpeg_target, heic, sha256(jpeg), sha256(heic)))
         moves.append((source_xmp, xmp_target, None, sha256(source_xmp), None))
         planned_sidecars.add(source_xmp)
@@ -997,11 +981,7 @@ def main() -> int:
 
     if not args.apply:
         print(
-            f"\nDRY RUN：计划移动 {len(moves)} 个文件；"
-            f"保留 {len(paired_retained_sidecars)} 个已配对边车文件、"
-            f"保留 {len(unpaired_sidecars)} 个未找到保留主媒体的边车文件、"
-            f"保护 {protected_media} 个主媒体；"
-            "未修改任何文件。"
+            f'\nDRY RUN: Planned Move {len(moves)} A file; retain {len(paired_retained_sidecars)} paired sidecars retained; {len(unpaired_sidecars)} An unused side-car file that retains the main media, protection {protected_media} primary media files; no files were modified.'
         )
         return 0
 
@@ -1009,24 +989,24 @@ def main() -> int:
     # 边车不会因后续条目失败而被拆开。
     for source, target, reference, expected_source_hash, expected_reference_hash in moves:
         if not source.is_file() or (reference is not None and not reference.is_file()):
-            print(f"ERROR 来源或保留文件已变化：{source}", file=sys.stderr)
+            print(f'ERROR Source or retained file has changed: {source}', file=sys.stderr)
             return 1
         if sha256(source) != expected_source_hash:
-            print(f"ERROR SHA-256 复核失败：{source}", file=sys.stderr)
+            print(f'ERROR SHA-256 Verification failed: {source}', file=sys.stderr)
             return 1
         if reference is not None and sha256(reference) != expected_reference_hash:
-            print(f"ERROR 保留项 SHA-256 复核失败：{reference}", file=sys.stderr)
+            print(f'ERROR Retention item SHA-256 verification failed: {reference}', file=sys.stderr)
             return 1
         if target.exists():
-            print(f"ERROR Duplicate 目标已存在，拒绝覆盖：{target}", file=sys.stderr)
+            print(f'ERROR Duplicate destination already exists; refusing to overwrite: {target}', file=sys.stderr)
             return 1
 
     for source_xmp, keep_xmp, heic, _merge_details in merges:
         if not source_xmp.is_file() or not heic.is_file():
-            print(f"ERROR 合并来源已变化：{source_xmp}", file=sys.stderr)
+            print(f'ERROR The combined source has changed: {source_xmp}', file=sys.stderr)
             return 1
         if not merge_xmp_annotations(source_xmp, keep_xmp, heic):
-            print(f"ERROR XMP 元数据合并失败：{source_xmp}", file=sys.stderr)
+            print(f'ERROR XMP metadata merge failed: {source_xmp}', file=sys.stderr)
             return 1
         print(f"MERGED {source_xmp} -> {keep_xmp}")
 
@@ -1035,11 +1015,11 @@ def main() -> int:
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.move(str(source), str(target))
         if not target.is_file() or sha256(target) != expected_source_hash:
-            print(f"ERROR 移动后 SHA-256 验证失败：{target}", file=sys.stderr); return 1
+            print(f'ERROR SHA-256 verification failed after moving: {target}', file=sys.stderr); return 1
         moved += 1
         print(f"MOVED {source} -> {target}")
     renamed = rename_unnecessary_copy_suffixes(source_root)
-    print(f"\n完成：移动 {moved}/{len(moves)} 个重复副本，重命名 {renamed} 个主库文件。")
+    print(f'\nCompleted: moved {moved}/{len(moves)} A duplicate copy, rename {renamed} A main library file.')
     return 0 if moved == len(moves) else 1
 
 

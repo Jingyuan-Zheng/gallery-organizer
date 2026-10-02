@@ -95,7 +95,7 @@ from pathlib import Path
 from typing import Dict, Iterator, List, Optional, Sequence, Set, Tuple
 
 
-from terminal_language import LocalizedArgumentParser, install_terminal_language, localized_input
+from terminal_language import LocalizedArgumentParser, install_terminal_language, localized_input, localized_format, localized_message
 
 from gallery_config import (
     LANGUAGE,
@@ -105,7 +105,7 @@ from gallery_config import (
     HASH_CACHE_DB, XATTR_TOOL, SIPS_TOOL, FFMPEG_TOOL,
 )
 install_terminal_language(LANGUAGE)
-if LANGUAGE == "en":
+if LANGUAGE == "zh":
     input = localized_input
 
 SCRIPT_VERSION = "2026-08-27-duplicate-best-mtime-transactional-swap"
@@ -450,7 +450,7 @@ class MediaInfo:
     camera_origin: bool = False
     camera_origin_reason: str = ""
     source_state: str = SOURCE_STATE_CLEAN
-    source_reason: str = "无来源负面证据"
+    source_reason: str = 'No source negative evidence'
     source_evidence: List[str] = field(default_factory=list)
     android_video_time_verified: bool = False
     android_video_time_reason: str = ""
@@ -724,40 +724,33 @@ def finish_stage_progress() -> None:
 
 
 def parse_args() -> argparse.Namespace:
-    description = (
-        "从指定来源目录扫描手机相机媒体，并固定整理到 "
-        f"{DESTINATION_ROOT}/YYYY/YYYY-MM/；与目标字节完全相同的来源副本 "
-        f"按 mtime 与拍摄时间择优，另一份移入 {DUPLICATE_ROOT}/。"
+    description = localized_format(
+        "Scan camera media from the specified source into {destination}/YYYY/YYYY-MM/. "
+        "For exact duplicates, keep the copy whose modification time is closer to the "
+        "capture time and move the other to {duplicates}/.",
+        destination=DESTINATION_ROOT, duplicates=DUPLICATE_ROOT,
     )
-    if LANGUAGE == "en":
-        description = (
-            f"Scan camera media from the specified source into {DESTINATION_ROOT}/YYYY/YYYY-MM/. "
-            f"For exact duplicates, keep the copy whose modification time is closer to the "
-            f"capture time and move the other to {DUPLICATE_ROOT}/."
-        )
     parser = LocalizedArgumentParser(description=description)
     parser.add_argument(
         "folder",
         nargs="?",
-        help=(
-            f"Source directory within {BACKUP_APPLE_ROOT}. Omit it for the interactive interface. "
-            f"Camera media goes to {DESTINATION_ROOT}; exact duplicates go to {DUPLICATE_ROOT}."
-            if LANGUAGE == "en" else
-            "来源目录；必须位于 "
-            f"{BACKUP_APPLE_ROOT} 内。省略时进入交互式 TUI。目标目录固定为 {DESTINATION_ROOT}；"
-            f"完全重复副本按 mtime 与拍摄时间择优，另一份隔离到 {DUPLICATE_ROOT}。"
+        help=localized_format(
+            "Source directory within {source}. Omit it for the interactive interface. "
+            "Camera media goes to {destination}; exact duplicates go to {duplicates}.",
+            source=BACKUP_APPLE_ROOT, destination=DESTINATION_ROOT,
+            duplicates=DUPLICATE_ROOT,
         ),
     )
     parser.add_argument(
         "--apply",
         action="store_true",
-        help="真正移动文件；不加此参数时只预览。",
+        help='Move files; without this option, show a preview only.',
     )
     parser.add_argument(
         "--batch-size",
         type=int,
         default=250,
-        help="每批交给 ExifTool 的文件数（默认 250）。",
+        help='Number of files to give to ExifTool per batch (default 250).',
     )
     return parser.parse_args()
 
@@ -767,8 +760,8 @@ def require_exiftool() -> str:
     if exe:
         return exe
 
-    print("错误：没有找到 ExifTool。", file=sys.stderr)
-    print("安装：brew install exiftool", file=sys.stderr)
+    print('Error: ExifTool could not be found.', file=sys.stderr)
+    print('Installation: brew install exiftool', file=sys.stderr)
     raise SystemExit(2)
 
 
@@ -959,7 +952,7 @@ def read_metadata_batch(
     try:
         rows = json.loads(result.stdout)
     except json.JSONDecodeError as exc:
-        raise RuntimeError(f"无法解析 ExifTool JSON：{exc}") from exc
+        raise RuntimeError(f'Unable to parse ExifTool JSON: {exc}') from exc
 
     result_map: Dict[str, dict] = {}
 
@@ -1415,14 +1408,13 @@ def verify_android_video_time_against_filename(
         ) = min(matches, key=lambda item: item[:4])
         offset_hours = ANDROID_VIDEO_LOCAL_UTC_OFFSETS[offset_rank]
         if offset_hours == 0:
-            interpretation = "metadata 原值已是当地时间"
+            interpretation = 'The original value of metadata is in local time.'
         else:
-            interpretation = f"按 UTC+{offset_hours} 转为当地时间"
+            interpretation = f'Using UTC+{offset_hours} Convert to local time'
 
         if mode_rank == 0:
             reason = (
-                f"{field_name}={format_timestamp(raw_timestamp)}；{interpretation}；"
-                f"与文件名当地时间相差 {difference} 秒"
+                f'{field_name}={format_timestamp(raw_timestamp)}；{interpretation}; differs from the local time of the filename {difference} seconds'
             )
             source = f"metadata:{field_name}"
         else:
@@ -1438,10 +1430,7 @@ def verify_android_video_time_against_filename(
                 adjusted_value.second,
             )
             reason = (
-                f"{field_name}={format_timestamp(raw_timestamp)}；{interpretation}；"
-                f"减去 Duration={matched_duration:.3f} 秒推算录像开始时间 "
-                f"{format_timestamp(inferred_start)}；"
-                f"与文件名当地时间相差 {difference} 秒"
+                f'{field_name}={format_timestamp(raw_timestamp)}；{interpretation}; subtract Duration={matched_duration:.3f} Instant calculation of the start time of the recording {format_timestamp(inferred_start)}; differs from the local time of the filename {difference} seconds'
             )
             source = f"metadata:{field_name}-Duration"
 
@@ -1470,14 +1459,12 @@ def verify_android_video_time_against_filename(
     if track_best is not None and track_best[0] <= TIME_TOLERANCE_SECONDS:
         difference, offset_rank, raw_timestamp = track_best
         offset_hours = ANDROID_VIDEO_LOCAL_UTC_OFFSETS[offset_rank]
-        offset_text = "原值" if offset_hours == 0 else f"UTC+{offset_hours}"
+        offset_text = 'Original value' if offset_hours == 0 else f"UTC+{offset_hours}"
         return (
             False,
             None,
             None,
-            "仅 TrackCreateDate 可匹配："
-            f"{format_timestamp(raw_timestamp)} 经 {offset_text} 后与文件名相差 {difference} 秒；"
-            "TrackCreateDate 单独不足以确认相机拍摄时间",
+            f'Only TrackCreateDate matches: {format_timestamp(raw_timestamp)} via {offset_text} The suffix differs from the filename. {difference} Seconds; TrackCreateDate alone is insufficient to confirm the camera shooting time.',
         )
 
     if closest is not None:
@@ -1491,29 +1478,26 @@ def verify_android_video_time_against_filename(
             closest_duration,
         ) = closest
         offset_hours = ANDROID_VIDEO_LOCAL_UTC_OFFSETS[offset_rank]
-        offset_text = "原值" if offset_hours == 0 else f"UTC+{offset_hours}"
+        offset_text = 'Original value' if offset_hours == 0 else f"UTC+{offset_hours}"
         if mode_rank == 1 and closest_duration is not None:
             return (
                 False,
                 None,
                 None,
-                "强视频时间字段没有通过验证；最接近的是 "
-                f"{field_name}={format_timestamp(raw_timestamp)} 经 {offset_text} 后再减 "
-                f"Duration={closest_duration:.3f} 秒，仍相差 {difference} 秒",
+                f'The strong video time field failed verification; the closest is {field_name}={format_timestamp(raw_timestamp)} via {offset_text} Subtract again Duration={closest_duration:.3f} Seconds, still differ {difference} seconds',
             )
         return (
             False,
             None,
             None,
-            "强视频时间字段没有通过验证；最接近的是 "
-            f"{field_name}={format_timestamp(raw_timestamp)} 经 {offset_text} 后仍相差 {difference} 秒",
+            f'The strong video time field failed verification; the closest is {field_name}={format_timestamp(raw_timestamp)} via {offset_text} Still differ later on. {difference} seconds',
         )
 
     return (
         False,
         None,
         None,
-        "没有可用于校验的强视频时间字段（DateTimeOriginal/MediaCreateDate/CreateDate/DateCreated）",
+        'No strong video time fields (DateTimeOriginal/MediaCreateDate/CreateDate/DateCreated) available for validation',
     )
 
 
@@ -1583,11 +1567,11 @@ def _run_xattr(args: Sequence[str]) -> subprocess.CompletedProcess[bytes]:
             check=False,
         )
     except FileNotFoundError as exc:
-        raise RuntimeError(f"找不到 macOS xattr 工具：{XATTR_TOOL}") from exc
+        raise RuntimeError(f'Unable to find macOS xattr tool: {XATTR_TOOL}') from exc
 
 
 def _xattr_error_text(result: subprocess.CompletedProcess[bytes]) -> str:
-    return result.stderr.decode("utf-8", errors="replace").strip() or f"退出码 {result.returncode}"
+    return result.stderr.decode("utf-8", errors="replace").strip() or f'Exit code {result.returncode}'
 
 
 def _list_xattr_names(path: Path, *, refresh: bool = False) -> Set[str]:
@@ -1598,7 +1582,7 @@ def _list_xattr_names(path: Path, *, refresh: bool = False) -> Set[str]:
 
     result = _run_xattr([str(path)])
     if result.returncode != 0:
-        raise OSError(f"无法列出扩展属性：{path}：{_xattr_error_text(result)}")
+        raise OSError(f'Cannot list extended attributes: {path}：{_xattr_error_text(result)}')
     names = {
         line.strip()
         for line in result.stdout.decode("utf-8", errors="replace").splitlines()
@@ -1618,20 +1602,20 @@ def _read_xattr_bytes(path: Path, name: str) -> Optional[bytes]:
         try:
             return bytes.fromhex(result.stdout.decode("ascii", errors="strict"))
         except (UnicodeDecodeError, ValueError) as exc:
-            raise OSError(f"xattr 十六进制输出无法解析：{path} [{name}]") from exc
+            raise OSError(f'xattr Hexadecimal output cannot be parsed: {path} [{name}]') from exc
 
     # 不依赖 stderr 的语言/文案；列出属性名来确认是否只是“属性不存在”。
     names = _list_xattr_names(path)
     if name not in names:
         return None
-    raise OSError(f"读取扩展属性失败：{path} [{name}]：{_xattr_error_text(result)}")
+    raise OSError(f'Failed to read extended attributes: {path} [{name}]：{_xattr_error_text(result)}')
 
 
 def _write_xattr_bytes(path: Path, name: str, value: bytes) -> None:
     """使用 xattr -wx 写入原始字节。"""
     result = _run_xattr(["-wx", name, value.hex(), str(path)])
     if result.returncode != 0:
-        raise OSError(f"写入扩展属性失败：{path} [{name}]：{_xattr_error_text(result)}")
+        raise OSError(f'Failed to write extended attributes: {path} [{name}]：{_xattr_error_text(result)}')
     cache_key = str(path.resolve(strict=False))
     if cache_key in _XATTR_NAME_CACHE:
         _XATTR_NAME_CACHE[cache_key].add(name)
@@ -1643,7 +1627,7 @@ def _remove_xattr_if_present(path: Path, name: str) -> None:
         return
     result = _run_xattr(["-d", name, str(path)])
     if result.returncode != 0:
-        raise OSError(f"删除扩展属性失败：{path} [{name}]：{_xattr_error_text(result)}")
+        raise OSError(f'Failed to delete the extended attribute: {path} [{name}]：{_xattr_error_text(result)}')
     cache_key = str(path.resolve(strict=False))
     if cache_key in _XATTR_NAME_CACHE:
         _XATTR_NAME_CACHE[cache_key].discard(name)
@@ -1665,10 +1649,10 @@ def _decode_finder_tags(raw: Optional[bytes]) -> List[str]:
     try:
         value = plistlib.loads(raw)
     except Exception as exc:
-        raise ValueError(f"Finder 标签 xattr 不是有效 plist：{exc}") from exc
+        raise ValueError(f'Finder tags xattr is not a valid plist: {exc}') from exc
 
     if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
-        raise ValueError("Finder 标签 xattr 不是字符串数组")
+        raise ValueError('Finder tags xattr are not string arrays')
 
     return list(value)
 
@@ -1728,17 +1712,17 @@ def build_custom_filename_tag_plan(
 def _verify_finder_tag(path: Path, tag_name: str = CUSTOM_FILENAME_FINDER_TAG) -> None:
     existed, raw = _read_finder_tag_xattr(path)
     if not existed:
-        raise RuntimeError(f"Finder 标签写入后 xattr 不存在：{path}")
+        raise RuntimeError(f'xattr does not exist after Finder tags are written: {path}')
 
     tags = _decode_finder_tags(raw)
     if not any(_finder_tag_base_name(item) == tag_name for item in tags):
-        raise RuntimeError(f"Finder 标签写入后验证失败：{path}")
+        raise RuntimeError(f'Finder tag verification failed after writing: {path}')
 
 
 def _restore_finder_tag_state(path: Path, item: FinderTagPlanItem) -> None:
     if item.original_xattr_exists:
         if item.original_xattr_raw is None:
-            raise RuntimeError("原 Finder 标签状态异常：标记存在但原始值为空")
+            raise RuntimeError('Original Finder tag status is abnormal: tag exists but original value is empty')
         _write_xattr_bytes(path, FINDER_TAG_XATTR, item.original_xattr_raw)
         return
 
@@ -1756,7 +1740,7 @@ def apply_finder_tag_plan(
     try:
         for item in plan:
             if not item.target.exists():
-                raise FileNotFoundError(f"Finder 标签目标不存在：{item.target}")
+                raise FileNotFoundError(f'Finder tag target does not exist: {item.target}')
 
             _write_xattr_bytes(item.target, FINDER_TAG_XATTR, item.desired_xattr_raw)
             _verify_finder_tag(item.target)
@@ -1778,7 +1762,7 @@ def apply_finder_tag_plan(
 
         message = str(exc)
         if restore_errors:
-            message += "；Finder 标签恢复失败：" + " | ".join(restore_errors)
+            message += '; Finder tag restoration failed: ' + " | ".join(restore_errors)
         return False, message, 0
 
 
@@ -1794,13 +1778,13 @@ def _move_mappings_transactionally(
     destination_keys: Set[str] = set()
     for source, destination in active:
         if not source.exists():
-            raise FileNotFoundError(f"来源不存在：{source}")
+            raise FileNotFoundError(f'Source does not exist: {source}')
         key = str(destination.resolve(strict=False)).casefold()
         if key in destination_keys:
-            raise FileExistsError(f"同组多个 mapping 目标重复：{destination}")
+            raise FileExistsError(f'Multiple mapping targets in the same group are duplicated: {destination}')
         destination_keys.add(key)
         if destination.exists() and key not in source_keys:
-            raise FileExistsError(f"目标已存在且不属于本次交换来源：{destination}")
+            raise FileExistsError(f'The target exists and does not belong to the source of this exchange: {destination}')
         destination.parent.mkdir(parents=True, exist_ok=True)
 
     staged: List[Tuple[Path, Path, Path]] = []
@@ -1809,13 +1793,13 @@ def _move_mappings_transactionally(
         for index, (source, destination) in enumerate(active):
             temporary = source.parent / f".{source.name}.gallery-move-{os.getpid()}-{index}.tmp"
             if temporary.exists():
-                raise FileExistsError(f"事务临时路径已存在：{temporary}")
+                raise FileExistsError(f'The transaction temporary path exists: {temporary}')
             shutil.move(str(source), str(temporary))
             staged.append((source, destination, temporary))
 
         for source, destination, temporary in staged:
             if destination.exists():
-                raise FileExistsError(f"暂存后目标仍存在：{destination}")
+                raise FileExistsError(f'The target still exists after saving: {destination}')
             shutil.move(str(temporary), str(destination))
             committed.append((source, destination, temporary))
 
@@ -1837,7 +1821,7 @@ def _move_mappings_transactionally(
                 rollback_errors.append(f"{temporary} -> {source}: {rollback_exc}")
         message = str(exc)
         if rollback_errors:
-            message += "；回滚失败：" + " | ".join(rollback_errors)
+            message += '; Rollback failed: ' + " | ".join(rollback_errors)
         raise RuntimeError(message) from exc
 
 
@@ -1981,7 +1965,7 @@ def timestamps_within_tolerance(
 
 def format_timestamp(timestamp: Optional[Timestamp]) -> str:
     if timestamp is None:
-        return "(无)"
+        return '(none)'
 
     y, month, day, hour, minute, second = timestamp
 
@@ -2072,7 +2056,7 @@ def read_source_xattrs(path: Path) -> Tuple[List[str], Optional[str], Optional[s
     try:
         names = _list_xattr_names(path)
     except OSError as exc:
-        return where_froms, quarantine, f"xattr 列表读取失败：{exc}"
+        return where_froms, quarantine, f'xattr list reading failed: {exc}'
 
     if WHERE_FROMS_XATTR in names:
         try:
@@ -2089,7 +2073,7 @@ def read_source_xattrs(path: Path) -> Tuple[List[str], Optional[str], Optional[s
                     if decoded:
                         where_froms = [decoded]
         except OSError as exc:
-            errors.append(f"WhereFroms xattr 读取失败：{exc}")
+            errors.append(f'WhereFroms xattr read failed: {exc}')
 
     if QUARANTINE_XATTR in names:
         try:
@@ -2097,7 +2081,7 @@ def read_source_xattrs(path: Path) -> Tuple[List[str], Optional[str], Optional[s
             if raw:
                 quarantine = raw.decode("utf-8", errors="replace").strip() or None
         except OSError as exc:
-            errors.append(f"quarantine xattr 读取失败：{exc}")
+            errors.append(f'quarantine xattr read failed: {exc}')
 
     return where_froms, quarantine, "；".join(errors) if errors else None
 
@@ -2159,15 +2143,15 @@ def classify_source_evidence(info: MediaInfo, source_root: Path) -> Tuple[str, s
 
     # 1) 明确截图 / 屏幕录制名称或目录。
     if info.kind == "photo" and is_likely_screenshot(path, source_root):
-        return SOURCE_STATE_EXCLUDED, "明确截图文件名/目录", ["截图名称或截图目录"]
+        return SOURCE_STATE_EXCLUDED, 'Clearly screenshot file name/directory', ['Screenshot name or screenshot directory']
 
     if info.kind == "video" and SCREEN_RECORDING_NAME_RE.search(path.stem):
-        return SOURCE_STATE_EXCLUDED, "明确屏幕录制文件名", [f"文件名：{path.name}"]
+        return SOURCE_STATE_EXCLUDED, 'Specify the screen recording filename', [f'File name: {path.name}']
 
     # 2) metadata 明确写出截图/屏幕录制。
     metadata_text = metadata_text_for_source_detection(info.metadata)
     if metadata_text and SCREEN_CAPTURE_METADATA_RE.search(metadata_text):
-        return SOURCE_STATE_EXCLUDED, "metadata 明确表明截图/屏幕录制", ["metadata: screen capture/recording"]
+        return SOURCE_STATE_EXCLUDED, 'metadata clearly indicates screenshot/screen recording', ["metadata: screen capture/recording"]
 
     # 3) macOS 下载来源 xattr。
     where_froms, quarantine, xattr_error = read_source_xattrs(path)
@@ -2179,7 +2163,7 @@ def classify_source_evidence(info: MediaInfo, source_root: Path) -> Tuple[str, s
         shown = web_where_froms[0]
         if len(shown) > 180:
             shown = shown[:177] + "..."
-        return SOURCE_STATE_EXCLUDED, "WhereFroms 表明来自网络下载", [f"WhereFroms={shown}"]
+        return SOURCE_STATE_EXCLUDED, 'WhereFroms indicates that it was downloaded from the internet', [f"WhereFroms={shown}"]
 
     # Exif/XMP 明确 SourceURL 也视作网络来源；普通版权网页字段不会因为 URL 字样自动命中。
     metadata_urls = [
@@ -2190,7 +2174,7 @@ def classify_source_evidence(info: MediaInfo, source_root: Path) -> Tuple[str, s
         shown = metadata_urls[0]
         if len(shown) > 180:
             shown = shown[:177] + "..."
-        return SOURCE_STATE_EXCLUDED, "metadata SourceURL 表明来自网络来源", [f"SourceURL={shown}"]
+        return SOURCE_STATE_EXCLUDED, 'The metadata SourceURL indicates that it comes from a network source.', [f"SourceURL={shown}"]
 
     risky_dirs = source_directory_evidence(path, source_root)
 
@@ -2203,7 +2187,7 @@ def classify_source_evidence(info: MediaInfo, source_root: Path) -> Tuple[str, s
         if quarantine_agent and STRONG_DOWNLOAD_AGENT_RE.search(quarantine_agent):
             return (
                 SOURCE_STATE_EXCLUDED,
-                "quarantine 表明来自浏览器/聊天应用",
+                'quarantine indicates that it comes from the browser/chat application',
                 [f"quarantine agent={quarantine_agent}"],
             )
 
@@ -2211,21 +2195,21 @@ def classify_source_evidence(info: MediaInfo, source_root: Path) -> Tuple[str, s
     # agent=Photos；这必须视为中性，不能因此阻止相机原片整理。
     # 未知 agent 也只作诊断，不单独造成 AMBIGUOUS。
     if risky_dirs:
-        evidence.append(f"可疑来源目录={risky_dirs[0]}")
+        evidence.append(f'Suspicious source directory={risky_dirs[0]}')
     if xattr_error:
         evidence.append(xattr_error)
 
     if evidence:
-        return SOURCE_STATE_AMBIGUOUS, "存在中等来源负面证据，需人工确认", evidence
+        return SOURCE_STATE_AMBIGUOUS, 'There are negative evidence of medium sources, which need to be confirmed by manual verification.', evidence
 
     if quarantine_agent.casefold() in {"photos", "photos.app", "com.apple.photos"}:
-        return SOURCE_STATE_CLEAN, "Apple Photos quarantine 为中性来源证据", [f"quarantine agent={quarantine_agent}"]
+        return SOURCE_STATE_CLEAN, 'Apple Photos quarantine as evidence of a neutral source', [f"quarantine agent={quarantine_agent}"]
 
     if quarantine:
         suffix = f" agent={quarantine_agent}" if quarantine_agent else ""
-        return SOURCE_STATE_CLEAN, "存在 quarantine，但无浏览器/聊天/网络来源证据", ["quarantine（中性）" + suffix]
+        return SOURCE_STATE_CLEAN, 'Quarantine exists, but no browser/chat/network source evidence', ['quarantine (neutral)' + suffix]
 
-    return SOURCE_STATE_CLEAN, "无来源负面证据", []
+    return SOURCE_STATE_CLEAN, 'No source negative evidence', []
 
 def has_trusted_exif(info: MediaInfo) -> bool:
     """
@@ -2345,12 +2329,12 @@ def determine_camera_origin(info: MediaInfo) -> Tuple[bool, str]:
     # DateTimeOriginal 或 Android 风格文件名，也保持原位；明确截图仍会
     # 在 finish_group 中被来源强负面证据优先报告。
     if info.kind == "photo" and ext == ".png":
-        return False, "PNG 不自动认定为手机相机原片；避免截图/转换图继承相机 metadata 后误收"
+        return False, 'PNG files are not automatically recognized as original photos from a mobile camera; avoid screenshotting or converting images to prevent them from being mistakenly received after inheriting camera metadata.'
 
     if info.trusted_exif:
         return (
             True,
-            "可信 EXIF：设备/相机信息 + 内嵌拍摄时间；按 EXIF 时间整理",
+            'Trusted EXIF: Device/camera information + embedded shooting time; sorted by EXIF time',
         )
 
     # 与可信照片 EXIF 对称：自定义/非标准文件名的视频若仍保留
@@ -2365,8 +2349,7 @@ def determine_camera_origin(info: MediaInfo) -> Tuple[bool, str]:
     if has_trusted_video_metadata(info) and not standard_android_video:
         return (
             True,
-            "可信视频 metadata：设备/相机信息 + 强内嵌拍摄/创建时间；"
-            "文件名无需符合 VID/IMG/MVIMG 格式",
+            'Trusted video metadata: device/camera information + strong embedded shooting/creation time; filenames do not need to conform to VID/IMG/MVIMG format',
         )
 
     # 设备字段可能在编辑/重编码时丢失，但 DateTimeOriginal 仍保留。
@@ -2379,8 +2362,7 @@ def determine_camera_origin(info: MediaInfo) -> Tuple[bool, str]:
         )
         return (
             True,
-            "DateTimeOriginal + IMG/MVIMG/PANO 文件名时间验证通过："
-            f"相差 {difference} 秒；按 DateTimeOriginal 整理",
+            f'DateTimeOriginal + IMG/MVIMG/PANO file name time verification passed: difference {difference} Seconds; sorted by DateTimeOriginal',
         )
 
     if APPLE_IMG_RE.fullmatch(path.stem):
@@ -2388,19 +2370,19 @@ def determine_camera_origin(info: MediaInfo) -> Tuple[bool, str]:
             info.kind == "photo"
             and ext not in APPLE_CAMERA_PHOTO_EXTENSIONS
         ):
-            return False, "IMG_#### 但不是允许的 iPhone 相机照片格式"
+            return False, 'IMG_#### but not allowed iPhone camera photo format'
 
         if (
             info.kind == "video"
             and ext not in APPLE_CAMERA_VIDEO_EXTENSIONS
         ):
-            return False, "IMG_#### 但不是允许的 iPhone 相机视频格式"
+            return False, 'IMG_#### but not allowed iPhone camera video formats'
 
         if not is_apple_device_metadata(info.metadata):
-            return False, "IMG_#### 但缺少 Apple/iPhone/iPad 设备元数据"
+            return False, 'IMG_#### but missing Apple/iPhone/iPad device metadata'
 
         if info.timestamp is None:
-            return False, "Apple 媒体缺少可靠内嵌拍摄/创建时间"
+            return False, 'Apple Media lacks reliable embedded capture/creation time'
 
         return True, "Apple IMG_#### + Apple device metadata"
 
@@ -2410,24 +2392,24 @@ def determine_camera_origin(info: MediaInfo) -> Tuple[bool, str]:
 
         if prefix not in expected_prefixes:
             expected_text = "/".join(expected_prefixes)
-            return False, f"文件名不是预期的 {expected_text}_... 相机格式"
+            return False, f'The file name is not as expected. {expected_text}_... Camera format'
 
         if info.kind == "video" and prefix in ("VID", "MVIMG"):
             if info.android_video_time_verified:
                 return (
                     True,
-                    "标准 Android VID/MVIMG 时间验证通过："
+                    'Standard Android VID/MVIMG time verification passed: '
                     + info.android_video_time_reason
-                    + "；仅在内存中解释 UTC/当地时间，不修改媒体 metadata",
+                    + '; Explains UTC/local time only in memory, does not modify media metadata',
                 )
             return (
                 False,
-                "标准 Android VID/MVIMG 时间验证失败："
-                + (info.android_video_time_reason or "没有可用验证结果"),
+                'Standard Android VID/MVIMG time verification failed: '
+                + (info.android_video_time_reason or 'No available verification results'),
             )
 
         if info.timestamp is None:
-            return False, "安卓相机格式文件名存在，但没有可靠内嵌完整时间"
+            return False, 'Android camera format filename exists, but no reliable embedded complete time'
 
         difference = timestamp_difference_seconds(
             info.filename_timestamp,
@@ -2440,9 +2422,7 @@ def determine_camera_origin(info: MediaInfo) -> Tuple[bool, str]:
         ):
             return (
                 False,
-                f"安卓文件名完整时间与内嵌元数据时间相差 "
-                f"{difference} 秒，超过允许的 {TIME_TOLERANCE_SECONDS} 秒；"
-                "且未满足更强的可信 metadata 规则",
+                f'The complete time of the Android filename differs from the embedded metadata time. {difference} Seconds, exceeding the allowed {TIME_TOLERANCE_SECONDS} Seconds; and does not meet the stronger reliable metadata rules',
             )
 
         if has_device_identity(info.metadata):
@@ -2452,16 +2432,16 @@ def determine_camera_origin(info: MediaInfo) -> Tuple[bool, str]:
                 f"timestamp difference <= {TIME_TOLERANCE_SECONDS}s",
             )
 
-        return False, "安卓相机格式文件名存在，但缺少设备/相机元数据，且没有达到无设备字段 fallback 条件"
+        return False, 'Android camera format filename exists, but lacks device/camera metadata, and does not meet the fallback condition for the no-device field.'
 
     if info.kind == "video" and info.timestamp is not None:
         if not has_device_identity(info.metadata):
-            return False, "自定义/非标准视频有内嵌时间，但缺少设备/相机身份 metadata"
+            return False, 'Custom/non-standard videos have embedded timestamps, but lack device/camera identity metadata.'
         if info.date_source == "metadata:TrackCreateDate":
-            return False, "自定义/非标准视频仅有 TrackCreateDate；该字段可能被转码/封装重置，不能单独确认相机实拍"
-        return False, f"自定义/非标准视频的时间来源 {info.date_source} 未达到独立归类的可信门槛"
+            return False, 'Custom/non-standard videos only have TrackCreateDate; this field may be re-encoded/packaged and cannot be independently confirmed as actual camera footage.'
+        return False, f'Source of time for custom/non-standard videos {info.date_source} Has not met the credible threshold for independent classification'
 
-    return False, "无法强确认是手机相机实际拍摄媒体"
+    return False, 'It is impossible to confirm that the media was actually shot by the mobile phone camera.'
 
 def build_media_info(
     paths: Sequence[Path],
@@ -2557,7 +2537,7 @@ def build_media_info(
             or item_index % SOURCE_PROGRESS_INTERVAL == 0
         ):
             print_stage_progress(
-                "来源/媒体分析",
+                'Source/media analysis',
                 item_index,
                 total,
                 path.name,
@@ -2584,30 +2564,30 @@ def custom_named_pair_is_trustworthy(
     这样像 `海边.heic + 海边.mov` 可以安全配对，但仅仅“同名”绝不够。
     """
     if still_info.kind != "photo" or video_info.kind != "video":
-        return False, "不是照片 + 视频"
+        return False, 'Not photos + videos'
 
     if not still_info.trusted_exif:
-        return False, "自定义文件名静态图缺少可信 EXIF"
+        return False, 'Custom filename static image lacks reliable EXIF'
 
     if still_info.timestamp is None or video_info.timestamp is None:
-        return False, "自定义文件名配对缺少双方可靠内嵌时间"
+        return False, 'Custom file name matching lacks reliable embedded timestamps from both parties'
 
     if not timestamps_within_tolerance(still_info.timestamp, video_info.timestamp):
         difference = timestamp_difference_seconds(
             still_info.timestamp,
             video_info.timestamp,
         )
-        return False, f"自定义文件名配对时间相差 {difference} 秒"
+        return False, f'The matching time for custom filenames differs. {difference} seconds'
 
     still_id = normalize_identifier(still_info.content_id)
     video_id = normalize_identifier(video_info.content_id)
     if still_id and video_id and still_id != video_id:
-        return False, "ContentIdentifier/MediaGroupUUID 冲突"
+        return False, 'ContentIdentifier/MediaGroupUUID conflict'
 
     still_sig = device_signature(still_info.metadata)
     video_sig = device_signature(video_info.metadata)
     if still_sig and video_sig and still_sig != video_sig:
-        return False, "设备 metadata 冲突"
+        return False, 'Device metadata conflict'
 
     difference = timestamp_difference_seconds(
         still_info.timestamp,
@@ -2615,8 +2595,7 @@ def custom_named_pair_is_trustworthy(
     )
     return (
         True,
-        "自定义文件名同 stem + 可信静态图 EXIF + "
-        f"双方内嵌时间一致（相差 {difference} 秒）",
+        f'Custom file names are stem + reliable static images EXIF + consistent embedded timestamps between both parties (difference {difference} seconds)',
     )
 
 
@@ -2891,21 +2870,21 @@ def evaluate_photo_variant_relation(
     图像相似度也只是辅助证据，不能单独触发删除、覆盖或改名。
     """
     if a.kind != "photo" or b.kind != "photo":
-        return "ambiguous", "不是照片对"
+        return "ambiguous", "It's not the right photo."
     if a.path.parent != b.path.parent or a.path.stem.casefold() != b.path.stem.casefold():
-        return "ambiguous", "目录或 stem 不同"
+        return "ambiguous", 'The directory or stem is different.'
     if a.path.suffix.lower() == b.path.suffix.lower():
-        return "collision", "相同扩展名，不视为多格式导出"
+        return "collision", 'Same extension name is not considered as multi-format export'
     if (
         a.path.suffix.lower() not in APPLE_VARIANT_PHOTO_EXTENSIONS
         or b.path.suffix.lower() not in APPLE_VARIANT_PHOTO_EXTENSIONS
     ):
-        return "ambiguous", "不属于 Apple 多格式候选扩展名"
+        return "ambiguous", 'Not a multi-format candidate extension for Apple'
 
     stem_is_apple = APPLE_IMG_RE.fullmatch(a.path.stem) is not None
     apple_evidence = stem_is_apple or is_apple_device_metadata(a.metadata) or is_apple_device_metadata(b.metadata)
     if not apple_evidence:
-        return "ambiguous", "没有 Apple 文件名/设备证据"
+        return "ambiguous", 'No Apple file names/device evidence'
 
     diff = timestamp_difference_seconds(a.timestamp, b.timestamp)
     sig_a = device_signature(a.metadata)
@@ -2919,7 +2898,7 @@ def evaluate_photo_variant_relation(
         and b.date_source == "metadata:DateTimeOriginal"
     )
     if both_original_time and diff is not None and diff > TIME_TOLERANCE_SECONDS:
-        return "collision", f"两个 DateTimeOriginal 相差 {diff} 秒"
+        return "collision", f'The two DateTimeOriginals differ. {diff} seconds'
 
     # 常见 iPhone 导出：HEIC 保留完整相机 metadata，旁边的 JPG 被剥离 metadata，
     # 但两者同 stem、尺寸比例一致且文件系统 mtime 几乎同时。这个组合比低分辨率
@@ -2948,34 +2927,33 @@ def evaluate_photo_variant_relation(
     ):
         return (
             "confirmed",
-            "HEIC/JPEG 导出伴生证据一致：一份保留 DateTimeOriginal，另一份 metadata 缺失；"
-            f"尺寸比例一致，filesystem mtime 相差 {filesystem_time_diff:.3f}s",
+            f'HEIC/JPEG export companion evidence is consistent: one file retains DateTimeOriginal, the other lacks metadata; aspect ratio is consistent, but filesystem mtime differs. {filesystem_time_diff:.3f}s',
         )
 
     similarity = visual_similarity(a.path, b.path, visual_cache)
-    sim_text = "不可用" if similarity is None else f"{similarity:.3f}"
+    sim_text = 'Unavailable' if similarity is None else f"{similarity:.3f}"
 
     if similarity is not None and similarity < VISUAL_DIFFERENT_THRESHOLD:
-        return "collision", f"图像明显不同（dHash 相似度 {similarity:.3f}）"
+        return "collision", f'The images are clearly different (dHash similarity {similarity:.3f}）'
 
     # 强视觉一致：允许补足某次导出造成的设备/日期字段缺失或 CreateDate 变化。
     if similarity is not None and similarity >= VISUAL_SIMILARITY_THRESHOLD:
         if not device_conflict:
             if diff is None or diff <= TIME_TOLERANCE_SECONDS:
-                return "confirmed", f"图像高度相似 {similarity:.3f}，时间无冲突"
+                return "confirmed", f'Images are highly similar in height {similarity:.3f}, no conflict in time'
             if not both_original_time and similarity >= 0.96:
-                return "confirmed", f"图像高度相似 {similarity:.3f}；至少一边不是 DateTimeOriginal，允许导出时间变化"
+                return "confirmed", f'Images are highly similar in height {similarity:.3f}; at least one of them is not DateTimeOriginal, allowing time changes to be exported'
 
     # 图像相似度不可用时，才退回很强的元数据组合；
     # 若图像已经成功比较但不到确认阈值，不让元数据覆盖这个视觉疑点。
     if similarity is None and diff is not None and diff <= 2 and not device_conflict and dims_ok:
         if both_original_time or (sig_a and sig_b and sig_a == sig_b):
-            return "confirmed", f"拍摄时间相差 {diff} 秒，设备/尺寸证据一致；图像相似度 {sim_text}"
+            return "confirmed", f'The shooting time is different. {diff} Seconds, device/size evidence consistent; image similarity {sim_text}'
 
     if device_conflict and (diff is None or diff > 2):
-        return "collision", f"设备信息冲突；图像相似度 {sim_text}"
+        return "collision", f'Device information conflict; image similarity {sim_text}'
 
-    return "ambiguous", f"证据不足；时间差 {diff} 秒；图像相似度 {sim_text}"
+    return "ambiguous", f'Insufficient evidence; time difference {diff} seconds; image similarity {sim_text}'
 
 
 def build_photo_variant_families(
@@ -3028,7 +3006,7 @@ def build_photo_variant_families(
                     problems.append(
                         Problem(
                             str(a),
-                            f"同 stem 多格式照片关系不确定：{a.name} / {b.name}；{reason}",
+                            f'The relationship between multiple formats of photos with the same stem is uncertain: {a.name} / {b.name}；{reason}',
                             "warning",
                         )
                     )
@@ -3127,12 +3105,12 @@ def load_sidecar_content_evidence(
         size = path.stat().st_size
         if size > MAX_SIDECAR_TEXT_BYTES:
             evidence.parse_notes.append(
-                f"sidecar 超过 {MAX_SIDECAR_TEXT_BYTES // (1024 * 1024)} MiB，跳过全文解析"
+                f'sidecar exceeds {MAX_SIDECAR_TEXT_BYTES // (1024 * 1024)} MiB, skip the full text analysis'
             )
             return evidence
         data = path.read_bytes()
     except OSError as exc:
-        evidence.parse_notes.append(f"读取失败：{exc}")
+        evidence.parse_notes.append(f'Read failed: {exc}')
         return evidence
 
     strings: Set[str] = set()
@@ -3142,7 +3120,7 @@ def load_sidecar_content_evidence(
         try:
             plist = plistlib.loads(data)
             _collect_plist_strings(plist, strings)
-            evidence.parse_notes.append("AAE plist 解析成功")
+            evidence.parse_notes.append('AAE plist parsing successful')
 
             if isinstance(plist, dict):
                 editor = plist.get("adjustmentEditorBundleID")
@@ -3224,61 +3202,61 @@ def sidecar_metadata_score(sidecar: MediaInfo, media: MediaInfo) -> Tuple[int, L
     if time_diff is not None:
         if time_diff <= 2:
             score += 4
-            reasons.append(f"时间差 {time_diff}s")
+            reasons.append(f'Time difference {time_diff}s')
         elif time_diff <= TIME_TOLERANCE_SECONDS:
             score += 2
-            reasons.append(f"时间差 {time_diff}s")
+            reasons.append(f'Time difference {time_diff}s')
         elif (
             sidecar.date_source == "metadata:DateTimeOriginal"
             and media.date_source == "metadata:DateTimeOriginal"
         ):
             score -= 6
-            reasons.append(f"DateTimeOriginal 冲突 {time_diff}s")
+            reasons.append(f'DateTimeOriginal conflict {time_diff}s')
 
     side_sig = device_signature(sidecar.metadata)
     media_sig = device_signature(media.metadata)
     if side_sig and media_sig:
         if side_sig == media_sig:
             score += 3
-            reasons.append("设备一致")
+            reasons.append('Device matches')
         else:
             score -= 5
-            reasons.append("设备冲突")
+            reasons.append('Device conflict')
 
     side_dims = image_dimensions(sidecar.metadata)
     media_dims = image_dimensions(media.metadata)
     if ext not in {".thm", ".lrv"} and side_dims and media_dims:
         if dimensions_compatible(side_dims, media_dims):
             score += 1
-            reasons.append("尺寸/比例兼容")
+            reasons.append('Size/proportions compatible')
         else:
             score -= 2
-            reasons.append("尺寸/比例冲突")
+            reasons.append('Size/proportions conflict')
 
     side_duration = metadata_duration_seconds(sidecar.metadata)
     media_duration = metadata_duration_seconds(media.metadata)
     if ext == ".lrv":
         if media.kind != "video":
             score -= 8
-            reasons.append("LRV 候选不是视频")
+            reasons.append('LRV candidate is not a video')
         elif side_duration is not None and media_duration is not None:
             duration_diff = abs(side_duration - media_duration)
             if duration_diff <= 1.0:
                 score += 4
-                reasons.append(f"时长差 {duration_diff:.2f}s")
+                reasons.append(f'Duration difference {duration_diff:.2f}s')
             elif duration_diff <= 3.0:
                 score += 2
-                reasons.append(f"时长差 {duration_diff:.2f}s")
+                reasons.append(f'Duration difference {duration_diff:.2f}s')
             elif duration_diff > 5.0:
                 score -= 4
-                reasons.append(f"时长冲突 {duration_diff:.2f}s")
+                reasons.append(f'Time conflict {duration_diff:.2f}s')
 
     if ext == ".aae" and media.kind == "photo":
         score += 1
-        reasons.append("AAE 照片候选")
+        reasons.append('AAE photo candidates')
     elif ext == ".thm" and media.kind == "video":
         score += 1
-        reasons.append("THM 视频候选")
+        reasons.append('THM video candidates')
 
     return score, reasons
 
@@ -3306,14 +3284,14 @@ def resolve_sidecar_targets(
         by_stem = lookup_index.media_by_stem.get(sidecar_path.parent, {})
 
     if not directory_media:
-        return SidecarResolution("unrelated", reason="同目录没有主媒体")
+        return SidecarResolution("unrelated", reason='There is no main media in the same directory.')
     strong_sets: List[Tuple[Set[Path], str]] = []
 
     # 1) 双扩展名：IMG_1234.HEIC.xmp -> IMG_1234.HEIC
     explicit_name = sidecar_path.stem.casefold()
     explicit = by_name.get(explicit_name)
     if explicit is not None:
-        strong_sets.append(({explicit.path}, "sidecar 文件名明确包含主媒体完整文件名"))
+        strong_sets.append(({explicit.path}, 'The sidecar file name clearly includes the full media filename.'))
 
     evidence = load_sidecar_content_evidence(sidecar_path, content_cache)
 
@@ -3365,7 +3343,7 @@ def resolve_sidecar_targets(
                             parsed,
                         )
                         if direct_difference is not None:
-                            description = f"{field_name}={format_timestamp(parsed)}（直接比较）"
+                            description = f'{field_name}={format_timestamp(parsed)}(Direct comparison)'
                             if best is None or direct_difference < best[0]:
                                 best = (direct_difference, description)
 
@@ -3377,7 +3355,7 @@ def resolve_sidecar_targets(
                                 explicit_offset,
                             )
                             if difference is not None:
-                                description = f"{field_name}={value}（显式时区归一化）"
+                                description = f'{field_name}={value}(Explicit time zone normalization)'
                                 if best is None or difference < best[0]:
                                     best = (difference, description)
 
@@ -3392,7 +3370,7 @@ def resolve_sidecar_targets(
                             if difference is None:
                                 continue
                             description = (
-                                f"{field_name}={format_timestamp(parsed)} + {offset_reason}（时区归一化）"
+                                f'{field_name}={format_timestamp(parsed)} + {offset_reason}(Time zone unification)'
                             )
                             if best is None or difference < best[0]:
                                 best = (difference, description)
@@ -3414,7 +3392,7 @@ def resolve_sidecar_targets(
                             if difference is None:
                                 continue
                             description = (
-                                f"{field_name}={format_timestamp(parsed)}，由 {xmp_reason} 提供显式时区"
+                                f'{field_name}={format_timestamp(parsed)}, by {xmp_reason} Provide explicit time zone'
                             )
                             if best is None or difference < best[0]:
                                 best = (difference, description)
@@ -3422,14 +3400,13 @@ def resolve_sidecar_targets(
                 if best is not None and best[0] <= APPLE_ORIGINAL_ADJUSTMENT_TIME_TOLERANCE_SECONDS:
                     verified_targets.add(candidate.path)
                     verified_reasons.append(
-                        f"{candidate.path.name}: adjustmentTimestamp(UTC)="
-                        f"{format_timestamp(evidence.aae_adjustment_timestamp)} 与 {best[1]}相差 {best[0]} 秒"
+                        f'{candidate.path.name}: adjustmentTimestamp(UTC)={format_timestamp(evidence.aae_adjustment_timestamp)} with {best[1]}Difference {best[0]} seconds'
                     )
 
         if verified_targets:
             strong_sets.append((
                 verified_targets,
-                "IMG_O####.AAE Apple adjustment 关系验证通过（"
+                'IMG_O####.AAE Apple adjustment relationship verification passed ('
                 + "; ".join(verified_reasons)
                 + "）",
             ))
@@ -3448,7 +3425,7 @@ def resolve_sidecar_targets(
                 info.path for info in directory_media if info.path.name.casefold() in metadata_hints
             }
     if metadata_targets:
-        strong_sets.append((metadata_targets, "sidecar metadata 明确记录原文件名"))
+        strong_sets.append((metadata_targets, 'sidecar metadata clearly records the original filename'))
 
     # 3) XMP/AAE/DOP/PP3 内容中明确出现完整媒体文件名。
     content_targets: Set[Path] = set()
@@ -3484,7 +3461,7 @@ def resolve_sidecar_targets(
                         content_targets.add(info.path)
                         break
     if content_targets:
-        strong_sets.append((content_targets, "sidecar 内容明确引用媒体完整文件名"))
+        strong_sets.append((content_targets, 'Sidecar content clearly references the full media filename'))
 
     # 4) ContentIdentifier / MediaGroupUUID / XMP UUID 等标识符交集。
     side_ids = metadata_identifiers(sidecar.metadata) | evidence.identifiers
@@ -3500,7 +3477,7 @@ def resolve_sidecar_targets(
                 if media_ids & side_ids:
                     id_targets.add(info.path)
     if id_targets:
-        strong_sets.append((id_targets, "sidecar 与媒体存在相同唯一标识符"))
+        strong_sets.append((id_targets, 'sidecar and media have the same unique identifier'))
 
     if strong_sets:
         reasons: List[str] = []
@@ -3523,14 +3500,14 @@ def resolve_sidecar_targets(
         return SidecarResolution(
             "ambiguous",
             combined,
-            "强证据互相冲突；" + " | ".join(reasons),
+            'Strong evidence conflicts with each other;' + " | ".join(reasons),
         )
 
     # 没有强内容证据时，仅在同 stem 候选中做 metadata 辅助。
     stem = sidecar_path.stem.casefold()
     same_stem = list(by_stem.get(stem, []))
     if not same_stem:
-        return SidecarResolution("unrelated", reason="没有同 stem 主媒体，也没有内容引用")
+        return SidecarResolution("unrelated", reason='There are no same stem mainstream media, and there are no content citations.')
 
     ext = sidecar_path.suffix.lower()
     if ext == ".lrv":
@@ -3546,7 +3523,7 @@ def resolve_sidecar_targets(
         return SidecarResolution(
             "generic",
             {same_stem[0].path},
-            "同目录只有一个合理的同 stem 主媒体",
+            'There is only one reasonable main media with the same stem in the same directory.',
         )
 
     scored: List[Tuple[int, MediaInfo, List[str]]] = []
@@ -3562,17 +3539,17 @@ def resolve_sidecar_targets(
             return SidecarResolution(
                 "confirmed",
                 {best_info.path},
-                f"sidecar metadata 唯一匹配得分 {best_score}：" + ", ".join(best_reasons),
+                f'sidecar metadata unique matching score {best_score}：' + ", ".join(best_reasons),
             )
 
     score_text = "; ".join(
-        f"{info.path.name}={score}({', '.join(reasons) or '无有效 metadata'})"
+        f"{info.path.name}={score}({', '.join(reasons) or 'No valid metadata'})"
         for score, info, reasons in scored
     )
     return SidecarResolution(
         "ambiguous",
         {info.path for info in same_stem},
-        "同 stem 有多个候选且内容/metadata 无法唯一确认；" + score_text,
+        'There are multiple candidates with the same stem and content/metadata cannot be uniquely confirmed;' + score_text,
     )
 
 
@@ -3616,7 +3593,7 @@ def build_sidecar_resolution_index(
             or index % SOURCE_PROGRESS_INTERVAL == 0
         ):
             print_stage_progress(
-                "Sidecar索引",
+                'Sidecar index',
                 index,
                 total,
                 candidate.name,
@@ -3650,7 +3627,7 @@ def sidecars_for_media_group_indexed(
 
         outsiders = sorted((p.name for p in targets - media_set), key=str.casefold)
         ambiguous.append(
-            f"{candidate.name} 归属跨越当前组：{resolution.reason}；组外候选："
+            f'{candidate.name} Membership across current group: {resolution.reason}; External candidate group: '
             + ", ".join(outsiders)
         )
 
@@ -3707,7 +3684,7 @@ def sidecars_for_media_group(
 
             outsiders = sorted((p.name for p in targets - media_set), key=str.casefold)
             ambiguous.append(
-                f"{candidate.name} 归属跨越当前组：{resolution.reason}；组外候选："
+                f'{candidate.name} Membership across current group: {resolution.reason}; External candidate group: '
                 + ", ".join(outsiders)
             )
 
@@ -3844,7 +3821,7 @@ def build_groups(
             problems.append(
                 Problem(
                     str(primary_path),
-                    f"来源强负面证据优先于 EXIF，{description} 整组保持原位：{details}",
+                    f'Strong negative evidence of source is prioritized over EXIF,{description} Maintain the entire group in place: {details}',
                 )
             )
             consumed.update(media_set)
@@ -3864,7 +3841,7 @@ def build_groups(
             problems.append(
                 Problem(
                     str(primary_path),
-                    f"来源不确定，为避免误收下载/聊天媒体，{description} 整组保持原位：{details}",
+                    f'The source is uncertain, in order to avoid receiving the wrong download/chat media,{description} Maintain the entire group in place: {details}',
                     "warning",
                 )
             )
@@ -3875,8 +3852,7 @@ def build_groups(
             problems.append(
                 Problem(
                     str(primary_path),
-                    "无法强确认主媒体是相机实拍："
-                    f"{primary.camera_origin_reason}；{description} 整组保持原位",
+                    f'It is impossible to confirm the main media is a real photo taken by the camera: {primary.camera_origin_reason}；{description} Keep the entire group in place',
                 )
             )
             consumed.update(media_set)
@@ -3884,7 +3860,7 @@ def build_groups(
 
         if primary.timestamp is None or primary.date_source is None:
             problems.append(
-                Problem(str(primary_path), f"{description} 主媒体没有可靠内嵌时间，整组保持原位")
+                Problem(str(primary_path), f'{description} The main media lacks a reliable embedded timing, and the entire group remains in place.')
             )
             consumed.update(media_set)
             return False
@@ -3898,7 +3874,7 @@ def build_groups(
             problems.append(
                 Problem(
                     str(primary_path),
-                    "sidecar 归属不明确，为防止附件和主媒体拆散，整组保持原位："
+                    "The sidecar's affiliation is unclear, so to prevent the attachment and main media from being disassembled, keep the whole group in place: "
                     + " | ".join(ambiguous_sidecars),
                     "failure",
                 )
@@ -3915,7 +3891,7 @@ def build_groups(
             problems.append(
                 Problem(
                     str(primary_path),
-                    "发现脚本未识别但名称明显相关的伴随文件，为防止遗留附件，整组保持原位："
+                    'If you find accompanying files that are not recognized by the script but are clearly related to the name, keep the entire group in place to prevent leftover attachments: '
                     + ", ".join(path.name for path in unknown),
                     "failure",
                 )
@@ -3973,17 +3949,14 @@ def build_groups(
                         component.filename_timestamp, component.timestamp
                     )
                     conflict_parts.append(
-                        f"{component.path.name} 文件名时间 "
-                        f"{format_timestamp(component.filename_timestamp)}，"
-                        f"元数据时间 {format_timestamp(component.timestamp)}，"
-                        f"相差 {difference} 秒"
+                        f'{component.path.name} File name time {format_timestamp(component.filename_timestamp)}, metadata time {format_timestamp(component.timestamp)}, different {difference} seconds'
                     )
             if conflict_parts:
                 problems.append(
                     Problem(
                         str(primary_path),
                         "；".join(conflict_parts)
-                        + f"；超过允许的 {TIME_TOLERANCE_SECONDS} 秒，整组保持原位",
+                        + f'; exceeding the allowed {TIME_TOLERANCE_SECONDS} Second, the entire group remains in place.',
                     )
                 )
                 consumed.update(media_members)
@@ -4031,7 +4004,7 @@ def build_groups(
     for info in sorted(infos.values(), key=lambda item: str(item.path).casefold()):
         if info.kind == "sidecar" and info.path not in consumed:
             problems.append(
-                Problem(str(info.path), "找不到已确认且归属明确的主媒体，sidecar 保持原位")
+                Problem(str(info.path), 'Unable to find a confirmed and clearly attributed main media, sidecar remains in place.')
             )
 
     return groups, problems
@@ -4148,16 +4121,16 @@ def compare_existing_destination_content(
     """
     try:
         if source.is_symlink():
-            return None, f"来源是符号链接，拒绝判重：{source}"
+            return None, f'The source is a symbolic link, and it is not judged as heavy: {source}'
 
         if destination.is_symlink():
-            return False, f"目标同名项是符号链接，不按重复文件处理：{destination}"
+            return False, f'Target identical names are symbolic links, not treated as duplicate files: {destination}'
 
         if not source.is_file():
-            return None, f"来源不是普通文件，无法安全判重：{source}"
+            return None, f'The source is not a regular file, and cannot be judged accurately: {source}'
 
         if not destination.is_file():
-            return False, f"目标同名项不是普通文件：{destination}"
+            return False, f'Target name is not a regular file: {destination}'
 
         # Apple AAE 是 plist；文件整体可能因 render type / timestamp 不同而不同，
         # 但 adjustmentData 相同表示实际编辑参数相同，按语义视为重复。
@@ -4166,7 +4139,7 @@ def compare_existing_destination_content(
                 source_plist = plistlib.loads(source.read_bytes())
                 destination_plist = plistlib.loads(destination.read_bytes())
             except Exception as exc:
-                return None, f"AAE plist 解析失败，无法安全判重：{exc}"
+                return None, f'AAE plist parsing failed, cannot safely judge the weight: {exc}'
             source_adjustment = source_plist.get("adjustmentData")
             destination_adjustment = destination_plist.get("adjustmentData")
             if (
@@ -4176,7 +4149,7 @@ def compare_existing_destination_content(
             ):
                 return (
                     True,
-                    "AAE adjustmentData 完全一致；实际编辑参数相同，忽略 adjustmentRenderTypes/adjustmentTimestamp",
+                    'AAE adjustmentData is completely consistent; the actual editing parameters are the same, ignoring adjustmentRenderTypes/adjustmentTimestamp.',
                 )
 
         # osxphotos / ExifTool 可能把等价 XMP 写成不同 XML，并重复写入照片内已有
@@ -4185,11 +4158,11 @@ def compare_existing_destination_content(
         if source.suffix.lower() == ".xmp" and destination.suffix.lower() == ".xmp":
             equivalent = xmp_annotations_equivalent(source, destination)
             if equivalent is None:
-                return None, "XMP 无法结构化读取，无法安全判重"
+                return None, 'XMP cannot be structuredly read, and cannot be safely judged by weight'
             if equivalent:
                 return (
                     True,
-                    "XMP 人物、人脸区域、标签和评分语义相同；忽略 XML 格式、数组顺序及重复 GPS metadata",
+                    'XMP person, face area, tags and rating semantics are the same; ignore XML format, array order and duplicate GPS metadata',
                 )
 
         source_size = source.stat().st_size
@@ -4198,7 +4171,7 @@ def compare_existing_destination_content(
         if source_size != destination_size:
             return (
                 False,
-                f"大小不同（来源 {source_size} bytes；目标 {destination_size} bytes）",
+                f'Different sizes (source {source_size} bytes; target {destination_size} bytes）',
             )
 
         source_hash = sha256_file(source)
@@ -4207,17 +4180,16 @@ def compare_existing_destination_content(
         if source_hash == destination_hash:
             return (
                 True,
-                f"大小相同且 SHA-256 完全一致（{source_hash}）",
+                f'Same size and SHA-256 completely consistent ({source_hash}）',
             )
 
         return (
             False,
-            "大小相同但 SHA-256 不同"
-            f"（来源 {source_hash}；目标 {destination_hash}）",
+            f'Same size but different SHA-256 (source {source_hash}; destination {destination_hash}）',
         )
 
     except Exception as exc:
-        return None, f"内容判重失败：{source} <-> {destination}: {exc}"
+        return None, f'Content judgment failure: {source} <-> {destination}: {exc}'
 
 
 JPEG_METADATA_VARIANT_EXTENSIONS = {".jpg", ".jpeg", ".jfif"}
@@ -4246,17 +4218,17 @@ def compare_jpeg_main_image_without_metadata(
     差异仅来自 EXIF/JFIF/XMP/ICC/thumbnail 等 metadata/container 信息。
     """
     if source.suffix.lower() not in JPEG_METADATA_VARIANT_EXTENSIONS:
-        return False, "来源不是 JPEG/JFIF，不执行 metadata-variant 主图判重"
+        return False, 'The source is not JPEG/JFIF, and does not execute the metadata-variant main image weight-matching'
     if destination.suffix.lower() not in JPEG_METADATA_VARIANT_EXTENSIONS:
-        return False, "目标不是 JPEG/JFIF，不执行 metadata-variant 主图判重"
+        return False, 'The target is not JPEG/JFIF, and does not execute the metadata-variant main image weight judgment.'
     if source.is_symlink() or destination.is_symlink():
-        return False, "来源或目标是符号链接，不执行 metadata-variant 判定"
+        return False, 'Source or target is a symbolic link, does not execute metadata-variant detection'
     if not source.is_file() or not destination.is_file():
-        return False, "来源或目标不是普通文件，不执行 metadata-variant 判定"
+        return False, 'Source or target is not a regular file, so metadata-variant detection is not performed.'
 
     exiftool = shutil.which("exiftool")
     if not exiftool:
-        return None, "找不到 exiftool，无法安全执行 JPEG metadata-variant 主图判重"
+        return None, 'exiftool not found, cannot safely execute JPEG metadata-variant main image weight-matching'
 
     try:
         with tempfile.TemporaryDirectory(prefix="gallery-organizer-jpeg-variant-") as temp_dir:
@@ -4285,23 +4257,21 @@ def compare_jpeg_main_image_without_metadata(
                 )
                 if result.returncode != 0 or not stripped.is_file():
                     detail = result.stderr.strip() or result.stdout.strip() or f"exit={result.returncode}"
-                    return None, f"ExifTool 去 metadata 失败：{original}：{detail}"
+                    return None, f'ExifTool failed to remove metadata: {original}：{detail}'
 
             source_hash = _sha256_uncached(stripped_source)
             destination_hash = _sha256_uncached(stripped_destination)
             if source_hash == destination_hash:
                 return (
                     True,
-                    "去除全部 metadata 后 JPEG 主图 SHA-256 完全一致"
-                    f"（{source_hash}）",
+                    f'After removing all metadata, the JPEG main picture SHA-256 is completely consistent ({source_hash}）',
                 )
             return (
                 False,
-                "去除全部 metadata 后 JPEG 主图仍不同"
-                f"（来源 {source_hash}；目标 {destination_hash}）",
+                f'The JPEG main image remains different after removing all metadata (source {source_hash}; destination {destination_hash}）',
             )
     except Exception as exc:
-        return None, f"JPEG metadata-variant 主图判重失败：{source} <-> {destination}: {exc}"
+        return None, f'JPEG metadata-variant main image re-encoding failed: {source} <-> {destination}: {exc}'
 
 
 def _first_metadata_value(metadata: dict, field_name: str) -> Optional[str]:
@@ -4321,7 +4291,7 @@ def jpeg_metadata_variant_summary(source: Path, destination: Path) -> str:
     """只读提取少量关键 metadata，用于 Dry Run/审计日志，不参与“谁更正确”的自动推断。"""
     exiftool = shutil.which("exiftool")
     if not exiftool:
-        return "关键 metadata 摘要不可用（找不到 exiftool）"
+        return 'Key metadata summary is unavailable (exiftool not found)'
     try:
         result = subprocess.run(
             [
@@ -4337,10 +4307,10 @@ def jpeg_metadata_variant_summary(source: Path, destination: Path) -> str:
             timeout=60,
         )
         if result.returncode not in (0, 1):
-            return f"关键 metadata 摘要读取失败：{result.stderr.strip()}"
+            return f'Key metadata summary reading failed: {result.stderr.strip()}'
         rows = json.loads(result.stdout)
         if len(rows) < 2:
-            return "关键 metadata 摘要读取不完整"
+            return 'Key metadata summary reading is incomplete'
 
         def describe(row: dict) -> str:
             fields = []
@@ -4348,11 +4318,11 @@ def jpeg_metadata_variant_summary(source: Path, destination: Path) -> str:
                 value = _first_metadata_value(row, field)
                 if value:
                     fields.append(f"{field}={value}")
-            return ", ".join(fields) if fields else "无关键字段"
+            return ", ".join(fields) if fields else 'No key fields'
 
-        return f"来源[{describe(rows[0])}]；Gallery旧版[{describe(rows[1])}]"
+        return f'Source [{describe(rows[0])}];Gallery old version[{describe(rows[1])}]'
     except Exception as exc:
-        return f"关键 metadata 摘要读取失败：{exc}"
+        return f'Key metadata summary reading failed: {exc}'
 
 
 def duplicate_target_for_source(source: Path) -> Path:
@@ -4370,7 +4340,7 @@ def duplicate_target_for_source(source: Path) -> Path:
     try:
         relative = source_resolved.relative_to(backup_root)
     except ValueError as exc:
-        raise ValueError(f"来源不在 Backup Apple 内，无法生成重复副本路径：{source}") from exc
+        raise ValueError(f'The source is not within the Backup Apple, so a duplicate copy path cannot be generated: {source}') from exc
 
     return duplicate_root / relative
 
@@ -4384,7 +4354,7 @@ def format_variant_duplicate_target_for_source(source: Path) -> Path:
     try:
         relative = source_resolved.relative_to(BACKUP_APPLE_ROOT.resolve(strict=False))
     except ValueError as exc:
-        raise ValueError(f"来源不在 Backup Apple 内，无法生成格式副本路径：{source}") from exc
+        raise ValueError(f'The source is not within the Backup Apple, so the format copy path cannot be generated: {source}') from exc
     return root / relative
 
 
@@ -4466,8 +4436,7 @@ def preflight_group(
                 return (
                     "conflict",
                     canonical_mappings,
-                    "组内两个文件会映射到同一个目标名称："
-                    f"{previous.name} / {source.name}",
+                    f'Two files in the group will be mapped to the same target name: {previous.name} / {source.name}',
                 )
             names_in_group[key] = source
 
@@ -4477,7 +4446,7 @@ def preflight_group(
 
             if reservation_key(canonical_destination) in reserved_destinations:
                 conflict_details.append(
-                    f"本次运行已有另一组计划占用目标：{canonical_destination}"
+                    f'Another set of planned targets has been occupied by this run: {canonical_destination}'
                 )
                 continue
 
@@ -4493,7 +4462,7 @@ def preflight_group(
                 return (
                     "error",
                     canonical_mappings,
-                    f"无法安全判断同名目标是否为重复文件：{detail}",
+                    f'Cannot safely determine whether a target with the same name is a duplicate file: {detail}',
                 )
 
             if not identical:
@@ -4508,22 +4477,18 @@ def preflight_group(
                     return (
                         "error",
                         canonical_mappings,
-                        "无法安全判断同名 JPEG 是否为 metadata variant："
-                        f"{variant_detail}",
+                        f'It is not possible to safely determine whether a JPEG with the same name is a metadata variant: {variant_detail}',
                     )
 
                 if same_main_image:
                     return (
                         "metadata-variant-review",
                         canonical_mappings,
-                        f"{source.name} 与 Gallery 同名文件的 JPEG 主图完全相同，但 metadata 不同；"
-                        "脚本无法判断哪个版本的 Orientation/GPS/日期等 metadata 才正确，"
-                        "因此来源与 Gallery 两份都保持原位，不替换、不备份迁移、不进入日期子目录。"
-                        f" {variant_detail}；{jpeg_metadata_variant_summary(source, canonical_destination)}",
+                        f'{source.name} The JPEG thumbnail of the file with the same name as Gallery is identical, but the metadata is different; the script cannot determine which version of Orientation/GPS/date metadata is correct, so the source and both copies of Gallery are kept in place, without replacing, backing up, migrating, or entering the date subfolder. {variant_detail}；{jpeg_metadata_variant_summary(source, canonical_destination)}',
                     )
 
                 conflict_details.append(
-                    f"目标已存在同名但内容不同：{canonical_destination}；{detail}；{variant_detail}"
+                    f'The target exists with the same name but different content: {canonical_destination}；{detail}；{variant_detail}'
                 )
                 continue
 
@@ -4538,7 +4503,7 @@ def preflight_group(
             duplicate_key = reservation_key(duplicate_destination)
             if duplicate_key in reserved_destinations:
                 conflict_details.append(
-                    f"本次运行已有另一组计划占用重复副本隔离路径：{duplicate_destination}"
+                    f'Another set of plans has already occupied the duplicate copy isolation path during this run: {duplicate_destination}'
                 )
                 continue
 
@@ -4550,19 +4515,16 @@ def preflight_group(
                     return (
                         "error",
                         canonical_mappings,
-                        "无法安全判断重复副本隔离目录中的同名文件："
-                        f"{duplicate_detail}",
+                        f'Cannot safely determine duplicate files in the isolation directory of a duplicate copy: {duplicate_detail}',
                     )
 
                 if duplicate_identical:
                     conflict_details.append(
-                        "重复副本隔离路径已经存在完全相同文件；脚本不删除来源、也不覆盖："
-                        f"{duplicate_destination}；{duplicate_detail}"
+                        f'An identical file already exists in duplicate quarantine; the script will neither delete the source nor overwrite the destination: {duplicate_destination}；{duplicate_detail}'
                     )
                 else:
                     conflict_details.append(
-                        "重复副本隔离路径已存在同名但不同内容文件；不改名、不覆盖："
-                        f"{duplicate_destination}；{duplicate_detail}"
+                        f'The duplicate quarantine destination contains a file with the same name but different content; refusing to rename or overwrite: {duplicate_destination}；{duplicate_detail}'
                     )
                 continue
 
@@ -4575,20 +4537,14 @@ def preflight_group(
 
             if source_distance < gallery_distance:
                 duplicate_details.append(
-                    f"{source.name} 与 Gallery 目标字节完全一致；来源 mtime 更接近拍摄时间"
-                    f"（来源差 {source_distance:.0f}s；Gallery 差 {gallery_distance:.0f}s），"
-                    "将来源放入 Gallery、原 Gallery 副本移入 Old Duplicate："
-                    f"{detail}"
+                    f'{source.name} Completely consistent with the Gallery target byte; the source mtime is closer to the shooting time (source difference {source_distance:.0f}s; Gallery difference {gallery_distance:.0f}s), place the source into Gallery, and move the original Gallery copy into Old Duplicate: {detail}'
                 )
                 # 两阶段事务移动器支持该交换映射：先暂存两边，再提交到目标位置。
                 final_mappings.append((canonical_destination, duplicate_destination))
                 final_mappings.append((source, canonical_destination))
             else:
                 duplicate_details.append(
-                    f"{source.name} 与 Gallery 目标字节完全一致；Gallery mtime 更接近或相等"
-                    f"（来源差 {source_distance:.0f}s；Gallery 差 {gallery_distance:.0f}s），"
-                    "保留 Gallery 版本："
-                    f"{detail}"
+                    f'{source.name} Completely consistent with the Gallery target byte; Gallery mtime is closer or equal (source difference {source_distance:.0f}s; Gallery difference {gallery_distance:.0f}s), retain the Gallery version: {detail}'
                 )
                 final_mappings.append((source, duplicate_destination))
 
@@ -4596,10 +4552,9 @@ def preflight_group(
             return (
                 "mixed-conflict",
                 final_mappings,
-                "同一媒体组同时存在已确认重复和其他冲突成员；"
-                "为避免拆组或错误补齐，整组保持原位。 "
-                + "重复：" + " | ".join(duplicate_details)
-                + "；冲突：" + " | ".join(conflict_details),
+                'Members of the same media group that are confirmed duplicates or other conflict members should remain in their original positions simultaneously; to avoid splitting the group or incorrect reassembly, the entire group should stay in place. '
+                + 'Repeat: ' + " | ".join(duplicate_details)
+                + '; Conflict: ' + " | ".join(conflict_details),
             )
 
         if conflict_details:
@@ -4617,8 +4572,7 @@ def preflight_group(
                 if not same_path(source, destination) and is_duplicate_destination(destination)
             )
             detail = (
-                f"确认完全重复并按 mtime 与拍摄时间择优；{duplicate_moves} 个文件将移入 {DUPLICATE_ROOT}；"
-                f"同组另有 {normal_moves} 个缺失成员补入正常 Gallery。"
+                f'Confirmed byte-for-byte duplicate; choose the copy whose modification time is closer to the capture time;{duplicate_moves} A file will be moved into {DUPLICATE_ROOT}; there is another in the same group {normal_moves} The missing member has been successfully added to the Gallery.'
                 + " | ".join(duplicate_details)
             )
             return "ok-with-duplicates", final_mappings, detail
@@ -4652,7 +4606,7 @@ def preflight_group(
         return (
             True,
             day_mappings,
-            f"月目录发生同名不同内容冲突（{month_detail}），整组改放日期子目录",
+            f'There is a conflict in content between the same name in the monthly directory ({month_detail}), change the date sub-directory for the whole group',
             "day-fallback",
         )
 
@@ -4660,7 +4614,7 @@ def preflight_group(
         return (
             True,
             day_mappings,
-            f"月目录发生同名不同内容冲突（{month_detail}）；日期目录验证后：{day_detail}",
+            f'There is a conflict in content between the same name in the monthly directory ({month_detail}); After date directory verification: {day_detail}',
             "day-with-duplicates",
         )
 
@@ -4676,8 +4630,7 @@ def preflight_group(
     return (
         False,
         day_mappings,
-        "月目录和日期子目录都存在同名不同内容冲突；不改名、不覆盖，整组保持原位。"
-        f" 月目录：{month_detail}；日期目录：{day_detail}",
+        f'There are conflicts in content between the monthly directory and the date subdirectories, with the same name but different contents; do not rename or overwrite, and keep the entire group in place. Monthly directory: {month_detail}; Date directory: {day_detail}',
         None,
     )
 
@@ -4714,7 +4667,7 @@ def combine_skip_problems_for_display(skips: Sequence[Problem]) -> List[ProblemD
         kind = classify(path)
         if (
             kind == "sidecar"
-            and problem.reason.startswith("找不到已确认且归属明确的主媒体")
+            and problem.reason.startswith('Unable to find the confirmed and clearly attributed main media')
         ):
             orphan_sidecars.append(problem)
             continue
@@ -4754,20 +4707,18 @@ def print_skip_problem_entries(skips: Sequence[Problem]) -> None:
 
     print()
     print(
-        "保持原位 / 跳过（合并显示）："
-        f"{len(entries)} 组/项"
-        f"（{grouped_file_records} 个文件记录）"
+        f'Left in place or skipped: {len(entries)} Group/item ({grouped_file_records} file records)'
     )
 
     if not entries:
-        print("  无")
+        print('  None')
         return
 
     for i, entry in enumerate(entries, start=1):
         print(f"  {i}. {entry.primary.path}")
         for companion in entry.companions:
             print(f"     └─ sidecar：{companion.path}")
-        print(f"     原因：{entry.primary.reason}")
+        print(f'     Reason: {entry.primary.reason}')
 
 
 def archive_completed_source_directory(source_root: Path) -> Path:
@@ -4778,18 +4729,17 @@ def archive_completed_source_directory(source_root: Path) -> Path:
 
     if source.parent != stage0:
         raise ValueError(
-            "完成目录归档只允许整理阶段0的直接子目录："
-            f"{source}；预期父目录：{stage0}"
+            f'The completion of directory archiving only allows direct subdirectories of stage 0 to be organized: {source}; Expected parent directory: {stage0}'
         )
 
     destination = completed / source.name
     if destination.exists():
-        raise FileExistsError(f"整理阶段1目标已存在，拒绝覆盖：{destination}")
+        raise FileExistsError(f'The stage 1 destination already exists; refusing to overwrite: {destination}')
 
     completed.mkdir(parents=True, exist_ok=True)
     shutil.move(str(source), str(destination))
     if source.exists() or not destination.is_dir():
-        raise RuntimeError(f"来源目录归档后验证失败：{source} -> {destination}")
+        raise RuntimeError(f'Verification failed after source directory archiving: {source} -> {destination}')
     return destination
 
 
@@ -4810,22 +4760,21 @@ def run_organizer(args: argparse.Namespace) -> int:
 
     if not source_root.exists():
         print(
-            f"错误：来源目录不存在：{source_root}",
+            f'Error: Source directory does not exist: {source_root}',
             file=sys.stderr,
         )
         return 2
 
     if not source_root.is_dir():
         print(
-            f"错误：来源路径不是目录：{source_root}",
+            f'Error: The source path is not a directory: {source_root}',
             file=sys.stderr,
         )
         return 2
 
     if not path_is_within(source_root, backup_root):
         print(
-            f"错误：来源目录必须位于 {BACKUP_APPLE_ROOT} 内。\n"
-            f"当前来源：{source_root}",
+            f'Error: Source directory must be within {BACKUP_APPLE_ROOT}.\nCurrent source: {source_root}',
             file=sys.stderr,
         )
         return 2
@@ -4834,48 +4783,48 @@ def run_organizer(args: argparse.Namespace) -> int:
 
     print("=" * 78)
     print("Gallery Organizer")
-    print(f"脚本版本：{SCRIPT_VERSION}")
-    print(f"来源目录：{source_root}")
-    print(f"固定目标：{destination_root}")
-    print(f"重复副本隔离：{duplicate_root}")
-    print(f"同图非首选格式隔离：{FORMAT_VARIANT_DUPLICATE_ROOT}")
-    if LANGUAGE == "en":
-        print(f"After apply, archive a completed batch: {SOURCE_STAGE0_ROOT}/name -> {COMPLETED_SOURCE_ROOT}/name")
-    else:
-        print(f"apply 完成目录归档：{SOURCE_STAGE0_ROOT}/名称 -> {COMPLETED_SOURCE_ROOT}/名称")
-    print(f"Android 时间容差：<= {TIME_TOLERANCE_SECONDS} 秒")
+    print(f'Script version: {SCRIPT_VERSION}')
+    print(f'Source directory: {source_root}')
+    print(f'Fixed destination: {destination_root}')
+    print(f'Duplicate isolation: {duplicate_root}')
+    print(f'Alternate formats of the same image: {FORMAT_VARIANT_DUPLICATE_ROOT}')
+    print(localized_format(
+        "After apply, archive a completed batch: {stage0}/name -> {stage1}/name",
+        stage0=SOURCE_STAGE0_ROOT, stage1=COMPLETED_SOURCE_ROOT,
+    ))
+    print(f'Android time tolerance: <= {TIME_TOLERANCE_SECONDS} seconds')
     print(
-        "模式："
+        'Mode: '
         + (
-            "实际移动 --apply"
+            'Actual movement --apply'
             if args.apply
-            else "DRY RUN（只预览，不移动）"
+            else 'DRY RUN (preview only, no movement)'
         )
     )
-    print("目标结构：YYYY/YYYY-MM；同名先做大小+SHA-256 判重，不同内容冲突时整组进入 YYYY-MM-DD 子目录")
-    print("完全重复：mtime 更接近可信拍摄时间的一份进入/留在 Gallery，另一份移入 Old Duplicate；缺失 sidecar 可补入正常 Gallery")
-    print("文件名：始终保持原样；不因重号自动改名")
-    print("覆盖：禁止")
-    print("可信 EXIF：照片设备/相机信息 + 内嵌拍摄时间 -> 直接按 EXIF 归类；PNG 不通过通用 trusted EXIF 自动放行")
-    print("可信视频 metadata：设备/相机信息 + 强内嵌时间 -> 自定义文件名也可独立归类")
-    print("无设备照片：DateTimeOriginal + IMG/MVIMG/PANO 文件名 <=20秒一致 -> 按 DateTimeOriginal 归类")
-    print("Android 视频时间：强时间字段尝试原值 / UTC+1 / +2 / +8 / +9；直接匹配或 Media/CreateDate-Duration 推回开始时间 <=20秒才通过")
-    print("Android 视频归类：验证成功后按文件名当地时间整理；只解释 metadata，不写入/修复 metadata")
-    print("PANO：没有可靠内嵌时间仍保持原位；metadata 修复不由本脚本处理")
-    print("无可靠内嵌时间：保持原位")
-    print("隐藏媒体：照常扫描；仅明确系统索引/垃圾项排除")
-    print("MVIMG：按 Android Motion Photo 命名适配；原文件不拆不改")
-    print("Apple HEIC/JPG/DNG：确认同图后优先相机原图进入 Gallery，其他格式进入 Old Duplicate/同图不同格式")
-    print("Sidecar：解析 XMP/AAE/DOP/PP3 内容；IMG_O####.AAE 将 Apple adjustment UTC 与 IMG_#### 的显式时区/OffsetTime/同 stem XMP 时区统一后核对；THM/LRV 用 metadata/时长辅助归属；不确定则整组不动")
-    print(f"自定义文件名：可信识别并纳入归类后，保留已有 Finder 标签并追加‘{CUSTOM_FILENAME_FINDER_TAG}’")
-    print("来源三态：CLEAN / AMBIGUOUS / EXCLUDED；强负面来源证据优先于可信 EXIF")
-    print("来源检测：WhereFroms/quarantine + 下载/聊天目录 + Screenshot/Screen Recording 文件名与 metadata")
-    print("quarantine：Photos/未知 quarantine 本身视为中性；仅浏览器/聊天 agent 或网络来源构成强负面")
-    print("xattr：来源检测先单次列出属性名，仅在实际存在 WhereFroms/quarantine 时再读取")
-    print("Sidecar/伴随文件：目录/name/stem、完整文件名文本匹配、ContentIdentifier/UUID、同 stem XMP、target→sidecar、未知附件均预建索引，避免 sidecar×media 重复扫描")
-    print(f"SHA-256：完整哈希判重；持久缓存 {HASH_CACHE_DB}（文件状态变化自动失效）")
-    print("进度显示：交互 Terminal 固定底部单行刷新；重定向日志时逐行记录；仅影响终端输出")
-    print("截图/屏幕录制/网络下载：保持原位；中等来源负面证据：保持原位等待人工确认")
+    print('Destination layout: YYYY/YYYY-MM; check size and SHA-256 for identical names, then use a YYYY-MM-DD subfolder for a same-name content conflict.')
+    print('Exact duplicates: keep the copy whose modification time is closer to the trusted capture time; move the other to duplicate quarantine. Missing sidecars may still be added to the library.')
+    print('Filenames: preserve original names; do not rename a file solely because of a collision.')
+    print('Overwriting: prohibited')
+    print('Trusted EXIF: device/camera identity plus embedded capture time can confirm a photo. PNG does not qualify through this general rule.')
+    print('Trusted video metadata: device/camera identity plus strong embedded time can confirm a video even with a custom filename.')
+    print('Photo without device metadata: use DateTimeOriginal when it agrees with an IMG/MVIMG/PANO filename within 20 seconds.')
+    print('Android video time: test strong time fields with original, UTC+1, +2, +8, and +9 offsets. A direct match or a duration-adjusted start time must agree within 20 seconds.')
+    print('Android video placement: after verification, sort by local time in the filename. This script reads but does not repair metadata.')
+    print('PANO: leave in place without a reliable embedded time; this script does not repair metadata.')
+    print('No reliable embedded capture time: leave in place.')
+    print('Hidden media: scan normally; exclude only known system indexes and trash.')
+    print('MVIMG: recognize Android Motion Photo names without splitting or modifying the original file.')
+    print('Apple HEIC/JPG/DNG: once confirmed as the same image, prefer the camera original for the library and quarantine other formats.')
+    print('Sidecar: Parse XMP/AAE/DOP/PP3 content; IMG_O####.AAE will be cross-checked after unifying the explicit time zone/OffsetTime/same stem XMP time zone with Apple adjustment UTC and IMG_####; THM/LRV will be assigned based on metadata/duration as auxiliary; If uncertain, leave the whole group unchanged.')
+    print(f"Custom filename: After being recognized and categorized, retain existing Finder tags and add '{CUSTOM_FILENAME_FINDER_TAG}'")
+    print('Source three states: CLEAN / AMBIGUOUS / EXCLUDED; Strong negative source evidence is prioritized over reliable EXIF')
+    print('Source detection: WhereFroms/quarantine + Download/Chat directory + Screenshot/Screen Recording File name and metadata')
+    print('quarantine: Photos/unknown quarantine is considered neutral in itself; only browsers/chat agents or online sources constitute strong negative')
+    print('xattr: The source detection will list the attribute names only once, and will be read only when there are actual WhereFroms/quarantine.')
+    print('Sidecar/companion files: directory/name/stem, complete filename text matching, ContentIdentifier/UUID, same stem XMP, target→sidecar, pre-built indexes for unknown attachments to avoid repeated scanning of sidecar×media.')
+    print(f'SHA-256: Full-file hashing with persistent cache: {HASH_CACHE_DB} (automatically invalidated when the file changes)')
+    print('Progress display: interactive Terminal fixed bottom-line refresh; log recording line by line when redirecting; affects terminal output only')
+    print('Screenshots, screen recordings, and web downloads: leave in place. Moderate negative origin evidence also requires manual review.')
     print("=" * 78)
     print()
 
@@ -4887,7 +4836,7 @@ def run_organizer(args: argparse.Namespace) -> int:
             DUPLICATE_ROOT.resolve(strict=False),
         )
     )
-    stage_timings["扫描文件"] = time.perf_counter() - stage_started
+    stage_timings['Scanning files'] = time.perf_counter() - stage_started
 
     media_paths = [
         path
@@ -4901,8 +4850,8 @@ def run_organizer(args: argparse.Namespace) -> int:
         if classify(path) == "sidecar"
     ]
 
-    print(f"发现主媒体：{len(media_paths)}")
-    print(f"发现 sidecar：{len(sidecar_paths)}")
+    print(f'Primary media found: {len(media_paths)}')
+    print(f'Sidecar files found: {len(sidecar_paths)}')
     print()
 
     stage_started = time.perf_counter()
@@ -4914,7 +4863,7 @@ def run_organizer(args: argparse.Namespace) -> int:
     metadata_done = 0
     metadata_batches = list(chunks(metadata_paths, args.batch_size))
     if metadata_total:
-        print_stage_progress("元数据", 0, metadata_total, "准备读取 ExifTool metadata")
+        print_stage_progress('Metadata', 0, metadata_total, 'Prepare to read ExifTool metadata')
 
     for batch_no, batch in enumerate(metadata_batches, start=1):
         try:
@@ -4926,17 +4875,17 @@ def run_organizer(args: argparse.Namespace) -> int:
             metadata_map.update(batch_map)
             metadata_done += len(batch)
             print_stage_progress(
-                "元数据",
+                'Metadata',
                 metadata_done,
                 metadata_total,
-                f"第 {batch_no}/{len(metadata_batches)} 批完成；成功读取 {len(batch_map)}/{len(batch)}",
+                f'No. {batch_no}/{len(metadata_batches)} Batch completed; successful reading {len(batch_map)}/{len(batch)}',
             )
 
         except Exception as exc:
-            reason = f"ExifTool 批次读取失败：{exc}"
+            reason = f'ExifTool batch reading failed: {exc}'
 
             print(
-                f"[失败] {reason}",
+                f'[Failure] {reason}',
                 file=sys.stderr,
             )
 
@@ -4950,10 +4899,10 @@ def run_organizer(args: argparse.Namespace) -> int:
                 )
             metadata_done += len(batch)
             print_stage_progress(
-                "元数据",
+                'Metadata',
                 metadata_done,
                 metadata_total,
-                f"第 {batch_no}/{len(metadata_batches)} 批失败，已记录待人工检查",
+                f'No. {batch_no}/{len(metadata_batches)} Batch failed, recorded for manual inspection.',
             )
 
     finish_stage_progress()
@@ -4968,13 +4917,13 @@ def run_organizer(args: argparse.Namespace) -> int:
         show_progress=True,
     )
     finish_stage_progress()
-    stage_timings["来源/xattr与媒体分析"] = time.perf_counter() - stage_started
+    stage_timings['Source/xattr and Media Analysis'] = time.perf_counter() - stage_started
 
     stage_started = time.perf_counter()
 
     substage_started = time.perf_counter()
     still_to_video, _ = pair_live_photos(infos)
-    stage_timings["  Live/Motion Photo 配对"] = time.perf_counter() - substage_started
+    stage_timings['  Live/Motion Photo pairing'] = time.perf_counter() - substage_started
 
     substage_started = time.perf_counter()
     (
@@ -4984,7 +4933,7 @@ def run_organizer(args: argparse.Namespace) -> int:
         ambiguous_variant_pairs,
     ) = build_photo_variant_families(infos)
     problems.extend(variant_problems)
-    stage_timings["  Apple 多格式照片关联"] = time.perf_counter() - substage_started
+    stage_timings['  Apple multi-format photo association'] = time.perf_counter() - substage_started
 
     substage_started = time.perf_counter()
     groups, planning_problems = build_groups(
@@ -4993,23 +4942,20 @@ def run_organizer(args: argparse.Namespace) -> int:
         source_root,
         variant_family_map,
     )
-    stage_timings["  Sidecar/媒体组构建"] = time.perf_counter() - substage_started
+    stage_timings['  Sidecar/Media Group construction'] = time.perf_counter() - substage_started
 
     problems.extend(planning_problems)
-    stage_timings["媒体组恢复/关联"] = time.perf_counter() - stage_started
+    stage_timings['Media group recovery/association'] = time.perf_counter() - stage_started
 
     print(
-        f"识别 Live/Motion Photo 静态图+视频配对："
-        f"{len(still_to_video)} 组"
+        f'Identify Live/Motion Photo static images + video pairing: {len(still_to_video)} groups'
     )
     print(
-        f"确认 Apple 多格式照片关联：{confirmed_variant_pairs} 对；"
-        f"关系不确定：{ambiguous_variant_pairs} 对"
+        f'Confirm Apple multi-format photo association: {confirmed_variant_pairs} confirmed; uncertain: {ambiguous_variant_pairs} pairs'
     )
 
     print(
-        f"可进入整理流程的媒体组："
-        f"{len(groups)}"
+        f'Media groups that can enter the sorting process: {len(groups)}'
     )
 
     print()
@@ -5038,9 +4984,9 @@ def run_organizer(args: argparse.Namespace) -> int:
         start=1,
     ):
         print("-" * 78)
-        print_stage_progress("整理进度", index, len(groups), group.description)
+        print_stage_progress('Organization progress', index, len(groups), group.description)
         print(
-            f"日期来源：{group.date_source}"
+            f'Date source: {group.date_source}'
         )
 
         ok, mappings, error, placement = preflight_group(
@@ -5048,16 +4994,16 @@ def run_organizer(args: argparse.Namespace) -> int:
         )
 
         if not ok:
-            reason = error or "未知预检错误"
+            reason = error or 'Unknown preflight error'
 
             if placement == "metadata-variant-review":
                 stats["metadata_variant_review_groups"] += 1
-                print(f"[同图 metadata variant，需人工确认] {reason}")
+                print(f'[Same image metadata variant, requires manual confirmation] {reason}')
                 problems.append(Problem(str(group.primary), reason, "warning"))
                 continue
 
             if placement == "duplicate-check-error":
-                print(f"[判重失败，跳过整组] {reason}", file=sys.stderr)
+                print(f'[Judgment failed, skip the entire group] {reason}', file=sys.stderr)
                 problems.append(
                     Problem(
                         str(group.primary),
@@ -5069,12 +5015,12 @@ def run_organizer(args: argparse.Namespace) -> int:
 
             if placement == "duplicate-mixed-conflict":
                 stats["conflicts"] += 1
-                print(f"[重复/冲突混合，跳过整组] {reason}")
+                print(f'[Repeated/conflict mixed, skipping the entire group] {reason}')
                 problems.append(Problem(str(group.primary), reason, "failure"))
                 continue
 
             stats["conflicts"] += 1
-            print(f"[跳过整组] {reason}")
+            print(f'[Skip the entire group] {reason}')
             problems.append(
                 Problem(
                     str(group.primary),
@@ -5095,9 +5041,9 @@ def run_organizer(args: argparse.Namespace) -> int:
             stats["duplicate_files"] += len(duplicate_mappings)
 
         if error and placement == "day-fallback":
-            print(f"[重号兜底] {error}")
+            print(f'[Heavy-duty backup] {error}')
         elif error and placement in ("month-with-duplicates", "day-with-duplicates"):
-            print(f"[确认完全重复] {error}")
+            print(f'[Confirm completely repeated] {error}')
 
         # Finder 标签也先做只读预检。若已有标签 plist 无法安全解析，
         # 宁可整组不动，避免覆盖用户原有 Finder 标签。
@@ -5105,14 +5051,14 @@ def run_organizer(args: argparse.Namespace) -> int:
             tag_plan = build_custom_filename_tag_plan(mappings, infos)
         except Exception as exc:
             stats["tag_failures"] += 1
-            reason = f"自定义文件名 Finder 标签预检失败：{exc}"
-            print(f"[跳过整组] {reason}", file=sys.stderr)
+            reason = f'Custom file name Finder tag pre-check failed: {exc}'
+            print(f'[Skip the entire group] {reason}', file=sys.stderr)
             problems.append(Problem(str(group.primary), reason, "failure"))
             continue
 
         for item in tag_plan:
-            state = "已存在" if item.already_had_tag else "将新增"
-            print(f"[Finder标签 {state}] {item.source} -> {CUSTOM_FILENAME_FINDER_TAG}")
+            state = 'Already existed' if item.already_had_tag else 'Will be added'
+            print(f'[Finder tags {state}] {item.source} -> {CUSTOM_FILENAME_FINDER_TAG}')
 
         for source, destination in mappings:
             if not same_path(source, destination):
@@ -5128,8 +5074,7 @@ def run_organizer(args: argparse.Namespace) -> int:
         if already_in_place:
             stats["already_correct"] += 1
             print(
-                "[已在正确位置] "
-                f"{mappings[0][1].parent if mappings else target_dir(group.year, group.month)}"
+                f'[Already in the correct position] {(mappings[0][1].parent if mappings else target_dir(group.year, group.month))}'
             )
 
             if not args.apply or not tag_plan:
@@ -5139,12 +5084,12 @@ def run_organizer(args: argparse.Namespace) -> int:
             if tag_ok:
                 stats["tagged_custom_files"] += added_count
                 for item in tag_plan:
-                    print(f"[Finder标签成功] {item.target}: {CUSTOM_FILENAME_FINDER_TAG}")
+                    print(f'[Finder tag successful] {item.target}: {CUSTOM_FILENAME_FINDER_TAG}')
                 continue
 
             stats["tag_failures"] += 1
-            reason = tag_error or "未知 Finder 标签写入错误"
-            print(f"[Finder标签失败] {group.primary}: {reason}", file=sys.stderr)
+            reason = tag_error or 'Unknown Finder tag write error'
+            print(f'[Finder tag failed] {group.primary}: {reason}', file=sys.stderr)
             problems.append(Problem(str(group.primary), reason, "failure"))
             continue
 
@@ -5153,15 +5098,15 @@ def run_organizer(args: argparse.Namespace) -> int:
         if not args.apply:
             for source, destination in mappings:
                 if same_path(source, destination):
-                    print(f"[已正确] {source}")
+                    print(f'[Correct] {source}')
                 elif is_format_variant_destination(destination):
-                    print(f"[同图非首选格式预览] {source}")
+                    print(f'[Preview of non-preferred format from the same image] {source}')
                     print(f"    -> {destination}")
                 elif is_duplicate_destination(destination):
-                    print(f"[重复副本预览] {source}")
+                    print(f'[Duplicate copy preview] {source}')
                     print(f"    -> {destination}")
                 else:
-                    print(f"[预览] {source}")
+                    print(f'[Preview] {source}')
                     print(f"    -> {destination}")
             continue
 
@@ -5169,8 +5114,8 @@ def run_organizer(args: argparse.Namespace) -> int:
 
         if not success:
             stats["move_failures"] += 1
-            reason = move_error or "未知移动错误"
-            print(f"[失败] {group.primary}: {reason}", file=sys.stderr)
+            reason = move_error or 'Unknown move error'
+            print(f'[Failure] {group.primary}: {reason}', file=sys.stderr)
             problems.append(Problem(str(group.primary), reason, "failure"))
             continue
 
@@ -5182,13 +5127,13 @@ def run_organizer(args: argparse.Namespace) -> int:
             rollback_error = rollback_completed_move(moved)
             restore_error = restore_tag_states_at_sources(tag_plan)
 
-            reason = tag_error or "未知 Finder 标签写入错误"
+            reason = tag_error or 'Unknown Finder tag write error'
             if rollback_error:
-                reason += f"；移动回滚失败：{rollback_error}"
+                reason += f'; move rollback failed: {rollback_error}'
             if restore_error:
-                reason += f"；原路径 Finder 标签恢复失败：{restore_error}"
+                reason += f'; The original path Finder tag restoration failed: {restore_error}'
 
-            print(f"[事务失败并回滚] {group.primary}: {reason}", file=sys.stderr)
+            print(f'[Transaction failed and rolled back] {group.primary}: {reason}', file=sys.stderr)
             problems.append(Problem(str(group.primary), reason, "failure"))
             continue
 
@@ -5203,68 +5148,67 @@ def run_organizer(args: argparse.Namespace) -> int:
 
         for source, destination in mappings:
             if same_path(source, destination):
-                print(f"[原本已正确] {source}")
+                print(f'[Originally correct] {source}')
             elif is_format_variant_destination(destination):
-                print(f"[同图非首选格式已隔离] {source}")
+                print(f'[The format not listed as the first choice in the same image has been isolated] {source}')
                 print(f"    -> {destination}")
             elif is_duplicate_destination(destination):
-                print(f"[重复副本已隔离] {source}")
+                print(f'[Duplicate copy has been isolated] {source}')
                 print(f"    -> {destination}")
             else:
-                print(f"[成功] {source}")
+                print(f'[Success] {source}')
                 print(f"    -> {destination}")
 
         for item in tag_plan:
-            print(f"[Finder标签成功] {item.target}: {CUSTOM_FILENAME_FINDER_TAG}")
+            print(f'[Finder tag successful] {item.target}: {CUSTOM_FILENAME_FINDER_TAG}')
 
     finish_stage_progress()
-    stage_timings["目标预检/判重/移动"] = time.perf_counter() - stage_started
-    stage_timings["总耗时"] = time.perf_counter() - run_started
+    stage_timings['Destination preflight/duplicate check/move'] = time.perf_counter() - stage_started
+    stage_timings['Total time'] = time.perf_counter() - run_started
     print()
     print("=" * 78)
-    print("运行结束")
+    print('Run complete')
     print("=" * 78)
-    print(f"来源目录：             {source_root}")
-    print(f"固定目标：             {destination_root}")
-    print(f"重复副本隔离：         {duplicate_root}")
-    print(f"可整理媒体组：         {stats['groups']}")
-    print(f"需要移动媒体组：       {stats['planned']}")
+    print(f'Source directory:             {source_root}')
+    print(f'Fixed target:             {destination_root}')
+    print(f'Duplicate copy isolation:         {duplicate_root}')
+    print(f"Media group that can be organized:         {stats['groups']}")
+    print(f"Media groups to move:       {stats['planned']}")
 
     if args.apply:
-        print(f"成功移动媒体组：       {stats['moved_groups']}")
-        print(f"成功移动文件：         {stats['moved_files']}")
-        print(f"已隔离重复文件：       {stats['moved_duplicate_files']}")
+        print(f"Media groups moved successfully:       {stats['moved_groups']}")
+        print(f"Successfully moved file:         {stats['moved_files']}")
+        print(f"Duplicate files have been isolated:       {stats['moved_duplicate_files']}")
 
-    print(f"原本已在正确位置：     {stats['already_correct']}")
-    print(f"检测到完全重复媒体组： {stats['duplicate_groups']}")
-    print(f"计划隔离重复文件：     {stats['duplicate_files']}")
-    print(f"同图 metadata variant待人工确认：{stats['metadata_variant_review_groups']}")
-    print(f"目标冲突整组跳过：     {stats['conflicts']}")
+    print(f"Already in the correct destination:     {stats['already_correct']}")
+    print(f"Detected completely duplicate media groups: {stats['duplicate_groups']}")
+    print(f"Plan to isolate duplicate files:     {stats['duplicate_files']}")
+    print(f"Same-image metadata variants requiring review: {stats['metadata_variant_review_groups']}")
+    print(f"Skip entire group with target conflict:     {stats['conflicts']}")
 
     if args.apply:
-        print(f"移动失败媒体组：       {stats['move_failures']}")
-        print(f"新增自定义文件名标签： {stats['tagged_custom_files']}")
-        print(f"Finder 标签失败：      {stats['tag_failures']}")
+        print(f"Media groups whose move failed:       {stats['move_failures']}")
+        print(f"Added custom filename tags: {stats['tagged_custom_files']}")
+        print(f"Finder tag failed:      {stats['tag_failures']}")
 
     print()
-    print("阶段耗时：")
+    print('Stage durations: ')
     for label in (
-        "扫描文件",
+        'Scanning files',
         "ExifTool metadata",
-        "来源/xattr与媒体分析",
-        "媒体组恢复/关联",
-        "  Live/Motion Photo 配对",
-        "  Apple 多格式照片关联",
-        "  Sidecar/媒体组构建",
-        "目标预检/判重/移动",
-        "总耗时",
+        'Source/xattr and Media Analysis',
+        'Media group recovery/association',
+        '  Live/Motion Photo pairing',
+        '  Apple multi-format photo association',
+        '  Sidecar/Media Group construction',
+        'Destination preflight/duplicate check/move',
+        'Total time',
     ):
         if label in stage_timings:
             print(f"  {label:<22} {stage_timings[label]:8.2f} s")
     print(
-        "  SHA-256 缓存"
-        f"             命中 {_SHA256_CACHE.hits} / 未命中 {_SHA256_CACHE.misses}"
-        + (f" / 缓存错误 {_SHA256_CACHE.errors}" if _SHA256_CACHE.errors else "")
+        f'  SHA-256 cache             hit {_SHA256_CACHE.hits} / Not hit {_SHA256_CACHE.misses}'
+        + (f' / Cache error {_SHA256_CACHE.errors}' if _SHA256_CACHE.errors else "")
     )
 
     if args.apply:
@@ -5274,19 +5218,18 @@ def run_organizer(args: argparse.Namespace) -> int:
         if existing_failures or stats["move_failures"] or stats["tag_failures"]:
             print()
             print(
-                "[阶段归档跳过] 本次存在失败项；来源目录仍保留在整理阶段0，"
-                "请处理失败后重新执行。"
+                '[Skip stage archiving] There were failed items in this attempt; the source directory is still retained in the sorting stage 0. Please retry after resolving the failure.'
             )
         else:
             try:
                 archived_source = archive_completed_source_directory(source_root)
                 print()
-                print(f"[阶段归档成功] {source_root}")
+                print(f'[Stage archiving successful] {source_root}')
                 print(f"    -> {archived_source}")
             except Exception as exc:
-                reason = f"apply 已完成，但来源目录移入整理阶段1失败：{exc}"
+                reason = f'apply has been completed, but the source directory migration to the consolidation stage 1 failed: {exc}'
                 problems.append(Problem(str(source_root), reason, "failure"))
-                print(f"[阶段归档失败] {reason}", file=sys.stderr)
+                print(f'[Phase archiving failed] {reason}', file=sys.stderr)
 
     failures = [
         problem
@@ -5308,8 +5251,7 @@ def run_organizer(args: argparse.Namespace) -> int:
 
     print()
     print(
-        f"失败 / 需要人工检查："
-        f"{len(failures)}"
+        f'Failure / Requires manual inspection: {len(failures)}'
     )
 
     if failures:
@@ -5321,26 +5263,26 @@ def run_organizer(args: argparse.Namespace) -> int:
                 f"  {i}. {problem.path}"
             )
             print(
-                f"     原因：{problem.reason}"
+                f'     Reason: {problem.reason}'
             )
     else:
-        print("  无")
+        print('  None')
 
     print_skip_problem_entries(skips)
 
     print()
-    print(f"提示 / 关系不确定：{len(warnings)}")
+    print(f'Hint / Relationship uncertain: {len(warnings)}')
     if warnings:
         for i, problem in enumerate(warnings, start=1):
             print(f"  {i}. {problem.path}")
-            print(f"     原因：{problem.reason}")
+            print(f'     Reason: {problem.reason}')
     else:
-        print("  无")
+        print('  None')
 
     if not args.apply:
         print()
-        print("当前是 DRY RUN，没有移动任何文件。")
-        print("确认预览无误后运行：")
+        print('It is currently a DRY RUN, and no files have been moved.')
+        print('Run after confirming the preview is correct: ')
         print(
             f'  python "{Path(__file__).name}" '
             f'"{source_root}" --apply'
@@ -5378,17 +5320,17 @@ def normalize_tui_path_input(value: str) -> str:
 def validate_tui_source(value: str) -> Tuple[Optional[Path], Optional[str]]:
     path_text = normalize_tui_path_input(value)
     if not path_text:
-        return None, "请输入要处理的目录。"
+        return None, 'Please enter the directory you want to process.'
 
     source_root = Path(path_text).expanduser().resolve()
     backup_root = BACKUP_APPLE_ROOT.resolve(strict=False)
 
     if not source_root.exists():
-        return None, f"来源目录不存在：{source_root}"
+        return None, f'The source directory does not exist: {source_root}'
     if not source_root.is_dir():
-        return None, f"来源路径不是目录：{source_root}"
+        return None, f'The source path is not a directory: {source_root}'
     if not path_is_within(source_root, backup_root):
-        return None, f"来源目录必须位于 {BACKUP_APPLE_ROOT} 内。"
+        return None, f'Source directory must be within {BACKUP_APPLE_ROOT}.'
 
     return source_root, None
 
@@ -5418,9 +5360,9 @@ def read_tui_key() -> str:
 def print_tui_header() -> None:
     print("=" * 72)
     print("Gallery Organizer · TUI")
-    print(f"版本：{SCRIPT_VERSION}")
-    print(f"固定目标：{DESTINATION_ROOT}")
-    print(f"重复副本：{DUPLICATE_ROOT}")
+    print(f'Version: {SCRIPT_VERSION}')
+    print(f'Fixed destination: {DESTINATION_ROOT}')
+    print(f'Duplicate copies: {DUPLICATE_ROOT}')
     print("=" * 72)
 
 
@@ -5430,22 +5372,22 @@ def tui_main(batch_size: int) -> int:
         clear_terminal()
         print_tui_header()
         print()
-        print("请输入要处理的目录（可直接拖入 Terminal 后回车）：")
+        print('Please enter the directory to be processed (you can drag it directly into Terminal and press Enter): ')
         try:
             raw_folder = input("> ")
         except (EOFError, KeyboardInterrupt):
-            print("\n已退出。")
+            print('\nExited.')
             return 0
 
         source_root, error = validate_tui_source(raw_folder)
         if error:
             print()
-            print(f"错误：{error}")
-            print("按任意键重新输入；Ctrl-C 退出。", end="", flush=True)
+            print(f'Error: {error}')
+            print('Press any key to re-enter; Ctrl-C to exit.', end="", flush=True)
             try:
                 read_tui_key()
             except KeyboardInterrupt:
-                print("\n已退出。")
+                print('\nExited.')
                 return 0
             continue
 
@@ -5454,19 +5396,19 @@ def tui_main(batch_size: int) -> int:
         clear_terminal()
         print_tui_header()
         print()
-        print(f"来源目录：{source_root}")
+        print(f'Source directory: {source_root}')
         print()
-        print("请选择运行模式：")
-        print("  [默认] DRY RUN  — 除 A 之外按任意键")
-        print("  [A]     APPLY    — 立即实际移动")
+        print('Please select the running mode: ')
+        print('  [Default] DRY RUN — Press any key except A')
+        print('  [A]     APPLY    — Move files now')
         print()
-        print("Ctrl-C 退出")
-        print("选择：", end="", flush=True)
+        print('Ctrl-C to exit')
+        print('Choice: ', end="", flush=True)
 
         try:
             key = read_tui_key()
         except KeyboardInterrupt:
-            print("\n已退出。")
+            print('\nExited.')
             return 0
 
         apply_now = key.upper() == "A"
@@ -5482,15 +5424,15 @@ def tui_main(batch_size: int) -> int:
         if apply_now:
             print()
             print("=" * 72)
-            print("APPLY 已结束。")
-            print("  [Q] 退出")
-            print("  [其他任意键] 返回初始界面，重新输入目录")
-            print("注意：返回初始界面不会撤销已经成功执行的移动。")
-            print("选择：", end="", flush=True)
+            print('The APPLY has ended.')
+            print('  [Q] Exit')
+            print('  [Any other key] Return to the start screen and enter the folder again')
+            print('Note: Returning to the initial screen will not undo completed moves.')
+            print('Choice: ', end="", flush=True)
             try:
                 post_key = read_tui_key()
             except KeyboardInterrupt:
-                print("\n已退出。")
+                print('\nExited.')
                 return result
             if post_key.upper() == "Q":
                 return result
@@ -5498,16 +5440,16 @@ def tui_main(batch_size: int) -> int:
 
         print()
         print("=" * 72)
-        print("DRY RUN 已结束，没有移动文件。")
-        print("  [A] 对同一目录重新检查并执行 APPLY")
-        print("  [Q] 退出")
-        print("  [其他任意键] 返回初始界面，重新输入目录")
-        print("选择：", end="", flush=True)
+        print('DRY RUN is complete; no files were moved.')
+        print('  [A] Recheck and execute APPLY for the same directory')
+        print('  [Q] Exit')
+        print('  [Any other key] Return to the start screen and enter the folder again')
+        print('Choice: ', end="", flush=True)
 
         try:
             post_key = read_tui_key()
         except KeyboardInterrupt:
-            print("\n已退出。")
+            print('\nExited.')
             return result
 
         if post_key.upper() == "Q":
@@ -5527,15 +5469,15 @@ def tui_main(batch_size: int) -> int:
 
         print()
         print("=" * 72)
-        print("APPLY 已结束。")
-        print("  [Q] 退出")
-        print("  [其他任意键] 返回初始界面，重新输入目录")
-        print("注意：返回初始界面不会撤销已经成功执行的移动。")
-        print("选择：", end="", flush=True)
+        print('The APPLY has ended.')
+        print('  [Q] Exit')
+        print('  [Any other key] Return to the start screen and enter the folder again')
+        print('Note: Returning to the initial screen will not undo completed moves.')
+        print('Choice: ', end="", flush=True)
         try:
             final_key = read_tui_key()
         except KeyboardInterrupt:
-            print("\n已退出。")
+            print('\nExited.')
             return result
         if final_key.upper() == "Q":
             return result

@@ -17,7 +17,7 @@ SCRIPTS = (
     "organize_gallery_exact_duplicates.py",
     "repair_photo_metadata.py",
 )
-SUPPORT = ("config.ini", "gallery_config.py", "platform_guard.py", "terminal_language.py", "en_messages.json")
+SUPPORT = ("config.ini", "gallery_config.py", "platform_guard.py", "terminal_language.py", "en_messages.json", "zh_messages.json")
 HAN = re.compile(r"[\u3400-\u9fff]")
 PNG = base64.b64decode(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9s3L8AAAAASUVORK5CYII="
@@ -86,6 +86,46 @@ class LanguageTests(unittest.TestCase):
                 result = self.run_script(folder, "repair_photo_metadata.py", "--help")
                 self.assertIn("not a valid date", result.stderr)
                 self.assertNotRegex(result.stderr, HAN)
+
+    def test_chinese_help_uses_translated_messages(self):
+        chinese = self.copy_for("zh")
+        expected = {
+            "organize_gallery_media.py": "扫描指定来源目录中的相机媒体",
+            "organize_leftover_media.py": "整理主 Organizer 留在原地的媒体",
+            "organize_gallery_exact_duplicates.py": "已确认的精确重复副本",
+            "repair_photo_metadata.py": "修复 IMG/PANO JPEG",
+        }
+        for script, phrase in expected.items():
+            with self.subTest(script=script):
+                result = self.run_script(chinese, script, "--help")
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertIn(phrase, result.stdout)
+                self.assertIn("显示帮助并退出", result.stdout)
+
+    def test_english_reasons_keep_classification_and_duplicate_sentinel(self):
+        english = self.copy_for("en")
+        code = (
+            "import pathlib, unittest.mock as mock; "
+            "import organize_leftover_media as media; "
+            "import organize_gallery_exact_duplicates as duplicates; "
+            "p=pathlib.Path('example.jpg'); "
+            "group=media.SecondaryGroup(p,[p],[p],[]); "
+            "info=media.MediaInfo(p,'photo',source_state=media.SOURCE_STATE_EXCLUDED, "
+            "source_reason='Network download'); "
+            "assert media._group_has_strong_download_evidence(group,{p:info})[0]; "
+            "assert not media._group_has_strong_download_evidence(group,{p:media.MediaInfo(p,'photo')})[0]; "
+            "a=pathlib.Path('a.xmp'); b=pathlib.Path('b.xmp'); "
+            "patch=mock.patch.object(duplicates,'read_xmp_annotations',return_value={}); "
+            "patch.start(); "
+            "assert duplicates.annotation_merge_analysis(a,b)=="
+            "(True,['No new fields; source XMP is a redundant copy']); "
+            "patch.stop()"
+        )
+        result = subprocess.run(
+            [sys.executable, "-c", code], cwd=english,
+            text=True, capture_output=True, timeout=30,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_screenshot_destinations_follow_selected_language(self):
         chinese, english = self.copy_for("zh"), self.copy_for("en")
