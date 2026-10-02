@@ -67,26 +67,48 @@ python3 organize_leftover_media.py "/实际路径/Incoming/Stage1/一批照片" 
 
 ### 默认目录示意
 
-下面展示一批待整理文件及其可能去向。实际目录可以在 `config.ini` 中修改。
+下面用一批照片示意默认目录和整理后的去向。实际目录可以在 `config.ini` 中修改。
 
 ```text
 ~/Pictures/GalleryOrganizer/
 ├── Incoming/
-│   ├── Stage0/一批照片/            ← 待整理的批次
-│   └── Stage1/一批照片/            ← 主整理后归档的批次
+│   ├── Stage0/
+│   │   └── 一批照片/                 ← 主整理前的来源目录
+│   └── Stage1/
+│       └── 一批照片/                 ← 主整理成功后整个批次移到这里；
+│                                       留下的文件可继续交给第二次整理
 └── Gallery/
-    ├── Main/                       ← 确认的相机照片和视频
-    ├── SortedFromUnsorted/         ← 第二次整理发现的相机媒体
-    ├── Screenshots/                ← 截图和录屏
-    ├── OtherMedia/                 ← 保存、下载或来源不明的媒体
-    ├── NeedsRepair/                ← 需要核对的文件
-    ├── Duplicate/                  ← 确认的重复文件
-    ├── MetadataReview/             ← JPEG 人工核对文件和报告
-    ├── MetadataRepairBackups/      ← JPEG 修复前的原文件备份
-    └── MetadataRepairWork/         ← JPEG 修复临时文件
+    ├── Main/                         ← 主整理确认的相机媒体
+    │   └── 2024/
+    │       └── 2024-06/
+    │           ├── IMG_0100.HEIC     ← 照片与 Live Photo 视频放在一起
+    │           ├── IMG_0100.MOV
+    │           ├── IMG_0100.HEIC.xmp ← 已配对的伴随文件
+    │           ├── IMG_0200.JPG
+    │           └── 2024-06-15/
+    │               └── IMG_0200.JPG ← 同名但内容不同，进入日期子目录
+    ├── SortedFromUnsorted/           ← 第二次整理确认的相机媒体
+    │   └── 2024/2024-06/IMG_0300.HEIC
+    ├── Screenshots/
+    │   ├── 2024/2024-06/Screenshot.png
+    │   └── 日期未知/ScreenRecording.mov
+    ├── OtherMedia/
+    │   ├── 下载与保存/2024/2024-06/saved-image.jpg
+    │   └── 来源无法确认/日期未知/unknown.jpg
+    ├── NeedsRepair/
+    │   ├── 拍摄时间缺失或异常/日期未知/photo.jpg
+    │   └── Sidecar关联异常/日期未知/IMG_0400.xmp
+    ├── Duplicate/                    ← 确认重复的文件单独隔离
+    │   ├── Incoming/Stage0/一批照片/IMG_0100.HEIC
+    │   ├── FormatVariants/Incoming/Stage0/一批照片/IMG_0100.JPG
+    │   └── Unsorted/截图与录屏/2024/2024-06/2024-06-15/
+    │       └── SHA256-…/Screenshot.png
+    ├── MetadataReview/               ← JPEG 人工核对文件与 CSV 报告
+    ├── MetadataRepairBackups/         ← JPEG 修复前的原文件备份
+    └── MetadataRepairWork/            ← JPEG 修复临时文件
 ```
 
-需要时，脚本会在目标位置下建立按日期划分的子目录。部分分类目录使用中文名称，这是实际目录名。
+这棵树展示的是可能出现的结果，并非每次都会创建全部目录。`Stage0/一批照片` 只有在主整理顺利完成后才移到 `Stage1/一批照片`，所以树中这两个位置代表不同时间。能确认拍摄时间的文件通常进入 `YYYY/YYYY-MM/`；同名冲突时可能再进入 `YYYY-MM-DD/` 子目录。“日期未知”表示时间无法确认。主整理产生的重复文件目录会保留来源路径；第二次整理产生的重复文件按类别和日期分层。
 
 ### `[general]`
 

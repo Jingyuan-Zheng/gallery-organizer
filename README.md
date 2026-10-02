@@ -67,26 +67,48 @@ Edit values after `=` in [config.ini](config.ini); you do not need to edit Pytho
 
 ### Default folder layout
 
-This example shows where a batch and its sorted files can go. Folder locations can be changed in `config.ini`.
+This example follows one batch through the default folders. Folder locations can be changed in `config.ini`.
 
 ```text
 ~/Pictures/GalleryOrganizer/
 ├── Incoming/
-│   ├── Stage0/Batch A/             ← batch to organize
-│   └── Stage1/Batch A/             ← batch after the main pass
+│   ├── Stage0/
+│   │   └── Batch A/                  ← input batch before the main pass
+│   └── Stage1/
+│       └── Batch A/                  ← entire batch after a successful main pass;
+│                                       files left for the second pass stay here
 └── Gallery/
-    ├── Main/                       ← confirmed camera photos and videos
-    ├── SortedFromUnsorted/         ← camera media found in the second pass
-    ├── Screenshots/                ← screenshots and screen recordings
-    ├── OtherMedia/                 ← saved, downloaded, or uncertain media
-    ├── NeedsRepair/                ← files needing review
-    ├── Duplicate/                  ← confirmed duplicates
-    ├── MetadataReview/             ← JPEG review and reports
-    ├── MetadataRepairBackups/      ← originals backed up for JPEG repair
-    └── MetadataRepairWork/         ← temporary JPEG repair files
+    ├── Main/                         ← camera media from the main pass
+    │   └── 2024/
+    │       └── 2024-06/
+    │           ├── IMG_0100.HEIC     ← photo and Live Photo video stay together
+    │           ├── IMG_0100.MOV
+    │           ├── IMG_0100.HEIC.xmp ← matched companion file
+    │           ├── IMG_0200.JPG
+    │           └── 2024-06-15/
+    │               └── IMG_0200.JPG ← different photo with a conflicting name
+    ├── SortedFromUnsorted/           ← camera media found in the second pass
+    │   └── 2024/2024-06/IMG_0300.HEIC
+    ├── Screenshots/
+    │   ├── 2024/2024-06/Screenshot.png
+    │   └── 日期未知/ScreenRecording.mov
+    ├── OtherMedia/
+    │   ├── 下载与保存/2024/2024-06/saved-image.jpg
+    │   └── 来源无法确认/日期未知/unknown.jpg
+    ├── NeedsRepair/
+    │   ├── 拍摄时间缺失或异常/日期未知/photo.jpg
+    │   └── Sidecar关联异常/日期未知/IMG_0400.xmp
+    ├── Duplicate/                    ← confirmed duplicates, kept separately
+    │   ├── Incoming/Stage0/Batch A/IMG_0100.HEIC
+    │   ├── FormatVariants/Incoming/Stage0/Batch A/IMG_0100.JPG
+    │   └── Unsorted/截图与录屏/2024/2024-06/2024-06-15/
+    │       └── SHA256-…/Screenshot.png
+    ├── MetadataReview/               ← JPEG review files and CSV reports
+    ├── MetadataRepairBackups/         ← originals backed up for JPEG repair
+    └── MetadataRepairWork/            ← temporary JPEG repair files
 ```
 
-Date-based folders are created inside these destinations when needed. Some category names may appear in Chinese because they are part of the actual folder names.
+The tree shows possible results, not folders that every run creates. `Stage0/Batch A` moves to `Stage1/Batch A` only after a successful main pass, so those two example positions represent different moments. A known capture date normally gives `YYYY/YYYY-MM/`; a same-name conflict may add `YYYY-MM-DD/`. `日期未知` means the date could not be confirmed. Main-pass duplicate folders mirror the source path; second-pass duplicates are grouped by category and date. The Chinese category names shown above are actual folder names used by the sorting rules.
 
 ### `[general]`
 
