@@ -11,7 +11,7 @@ import shutil
 CONFIG_FILE = Path(__file__).with_name("config.ini")
 _parser = ConfigParser(interpolation=None)
 if not _parser.read(CONFIG_FILE, encoding="utf-8"):
-    raise FileNotFoundError(f"找不到配置文件：{CONFIG_FILE}")
+    raise FileNotFoundError(f"Configuration file not found: {CONFIG_FILE}")
 
 
 _ERRORS = {
@@ -29,8 +29,8 @@ _ERRORS = {
 
 def _config_error(code: str, **values: str) -> str:
     chinese, english = _ERRORS[code]
-    language = _parser.get("general", "language", fallback="zh").strip().lower()
-    return (english if language == "en" else chinese).format(**values)
+    language = _parser.get("general", "language", fallback="en").strip().lower()
+    return (chinese if language == "zh" else english).format(**values)
 
 
 def _value(section: str, key: str) -> str:
@@ -41,7 +41,7 @@ def _value(section: str, key: str) -> str:
     return value
 
 
-LANGUAGE = _value("general", "language").lower()
+LANGUAGE = _parser.get("general", "language", fallback="en").strip().lower() or "en"
 if LANGUAGE not in {"zh", "en"}:
     raise ValueError("config.ini: [general] language must be zh or en")
 

@@ -6,7 +6,7 @@ Gallery Organizer sorts photos, videos, and companion files such as XMP and AAE 
 
 ## Language and compatibility
 
-In [config.ini](config.ini), set `[general] language = zh` for the existing Chinese terminal interface or `language = en` for English terminal messages. The default is `zh`. File names, user paths, and configured directory names are displayed as they exist on disk. Both languages use the same sorting rules and file operations.
+In [config.ini](config.ini), set `[general] language = zh` for the existing Chinese terminal interface or `language = en` for English terminal messages. English is the default if the setting is omitted or left blank. File names, user paths, and configured directory names are displayed as they exist on disk. Both languages use the same sorting rules and file operations.
 
 **macOS only.** All four entry scripts check the operating system at startup. On Windows or Linux they display a message and exit before scanning or moving files. Python itself is cross-platform, but this project relies on macOS Finder tags, extended attributes, `sips`, and `ditto`. Changing paths or tool locations in `config.ini` does not make the scripts cross-platform.
 
@@ -66,7 +66,7 @@ Edit values after `=` in [config.ini](config.ini); you do not need to edit Pytho
 
 | Setting | Values | Purpose |
 | --- | --- | --- |
-| `language` | `zh` or `en` | Terminal language. `zh` is the default and preserves the Chinese interface. |
+| `language` | `en` or `zh` | Terminal language. English is the default; choose `zh` for the Chinese interface. |
 
 ### `[paths]`
 

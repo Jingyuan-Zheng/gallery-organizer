@@ -36,13 +36,13 @@ class LanguageTests(unittest.TestCase):
         (self.media / "Gallery" / "Main").mkdir(parents=True)
         (self.batch / "Screenshot_2024.png").write_bytes(PNG)
 
-    def copy_for(self, language):
-        target = self.base / language
+    def copy_for(self, language, folder_name=None):
+        target = self.base / (folder_name or language)
         target.mkdir()
         for name in (*SUPPORT, *SCRIPTS):
             shutil.copy(ROOT / name, target / name)
         config = (target / "config.ini").read_text(encoding="utf-8")
-        config = config.replace("language = zh", f"language = {language}")
+        config = config.replace("language = en", f"language = {language}")
         config = config.replace("backup_root = ~/Pictures/GalleryOrganizer", f"backup_root = {self.media}")
         (target / "config.ini").write_text(config, encoding="utf-8")
         return target
@@ -66,6 +66,26 @@ class LanguageTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("not a valid date", result.stderr)
         self.assertNotRegex(result.stderr, HAN)
+
+    def test_english_is_default_when_language_is_omitted_or_blank(self):
+        for index, replacement in enumerate(("", "language =")):
+            with self.subTest(replacement=replacement):
+                folder = self.copy_for("en", f"default-{index}")
+                config_path = folder / "config.ini"
+                config_path.write_text(
+                    config_path.read_text(encoding="utf-8").replace("language = en", replacement),
+                    encoding="utf-8",
+                )
+                result = self.run_script(folder, "organize_gallery_media.py", "--help")
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertNotRegex(result.stdout + result.stderr, HAN)
+                config_path.write_text(
+                    config_path.read_text(encoding="utf-8").replace("auto_from =\n", "auto_from = 20241301\n"),
+                    encoding="utf-8",
+                )
+                result = self.run_script(folder, "repair_photo_metadata.py", "--help")
+                self.assertIn("not a valid date", result.stderr)
+                self.assertNotRegex(result.stderr, HAN)
 
     def test_both_languages_plan_the_same_screenshot_destination(self):
         chinese, english = self.copy_for("zh"), self.copy_for("en")

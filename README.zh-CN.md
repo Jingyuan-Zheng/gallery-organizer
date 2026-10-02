@@ -6,7 +6,7 @@
 
 ## 终端语言与系统兼容性
 
-在 [config.ini](config.ini) 的 `[general]` 中设置 `language = zh` 保留现有中文终端输出；设置 `language = en` 使用英文终端输出。文件名、用户路径和分类目录名仍按原文显示。
+在 [config.ini](config.ini) 的 `[general]` 中设置 `language = zh` 使用原有中文终端输出；设置 `language = en` 使用英文终端输出。不填写或留空时默认使用英文。文件名、用户路径和分类目录名仍按原文显示。
 
 
 **目前仅支持 macOS。** 四个入口脚本在启动时检查操作系统；在 Windows 或 Linux 上会立即显示提示并退出，不会开始扫描或移动文件。Python 本身可在这些系统运行，但本项目使用了 macOS 的 Finder 标签、扩展属性、`sips` 和 `ditto` 等功能。修改 `config.ini` 的路径或工具位置不能使脚本跨平台运行。
@@ -67,7 +67,7 @@
 
 | 配置项 | 可填值 | 用途 |
 | --- | --- | --- |
-| `language` | `zh` 或 `en` | 终端输出语言；默认 `zh`，保留原有中文交互。 |
+| `language` | `en` 或 `zh` | 终端输出语言；默认英文，指定 `zh` 才使用中文交互。 |
 
 ### `[paths]`
 
