@@ -2,7 +2,7 @@
 
 [中文说明](README.zh-CN.md)
 
-Gallery Organizer is an interactive terminal tool for sorting a photo library. It guides you through a preview before making changes, keeps related media together when it can, and puts uncertain files aside for review.
+Gallery Organizer is an interactive terminal tool for organizing an exported photo library. It files confirmed camera photos and videos by capture year and month, keeps Live Photo parts and related sidecars together when they can be matched, and separates screenshots, screen recordings, saved images, and confirmed duplicate copies. It shows a sorting preview before you choose to move files; uncertain items are left for your review.
 
 ## Why use it?
 
