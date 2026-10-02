@@ -13,6 +13,11 @@
 """
 from __future__ import annotations
 
+import sys
+
+if sys.platform != "darwin":
+    raise SystemExit("此脚本仅支持 macOS；Windows 和 Linux 上不会运行。")
+
 import argparse
 from functools import lru_cache
 import hashlib
@@ -22,7 +27,6 @@ import plistlib
 import re
 import shutil
 import subprocess
-import sys
 import tempfile
 try:
     from PIL import Image, ImageOps

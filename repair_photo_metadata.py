@@ -92,6 +92,11 @@ Apply from CLI:
 
 from __future__ import annotations
 
+import sys
+
+if sys.platform != "darwin":
+    raise SystemExit("此脚本仅支持 macOS；Windows 和 Linux 上不会运行。")
+
 import argparse
 import csv
 import hashlib
@@ -103,7 +108,6 @@ import re
 import shlex
 import shutil
 import subprocess
-import sys
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone, timedelta
