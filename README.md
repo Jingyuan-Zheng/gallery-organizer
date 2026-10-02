@@ -2,22 +2,35 @@
 
 [中文说明](README.zh-CN.md)
 
+Gallery Organizer organizes **photos and videos you have already exported** into folders. It does not export photos from an iPhone, camera, or any other device. Export your library with another tool first, then use this project to sort the resulting files.
+
 ## Why use it?
 
-A photo export can look simple until you try to sort it in Finder. Apple devices and digital cameras reuse numbered filenames, so different photos may have the same name. Portrait effects, edits, and other information can also be stored in separate **sidecar files** that need to stay with the right photo or video. Repeated imports, especially imports from overlapping dates, make it hard to tell a new file from a copy you already have.
+- **Repeated filenames.** Apple devices and digital cameras can reuse numbered names, so different photos from different periods may have the same filename.
+- **Companion files.** Portrait effects, edits, and other information can be stored in separate sidecar files. These need to stay with the right photo or video, even when names repeat.
+- **Overlapping imports.** Importing the same library several times, or importing overlapping date ranges, can leave multiple copies of the same media mixed with new files.
+- **Mixed media.** Apple library exports can contain camera photos, screenshots, screen recordings, and images saved from other apps in the same folder.
+- **Split Live Photos.** An exported Live Photo consists of a photo and a short video. Finder shows them separately, making the pair easy to split or overlook.
+- **Missing or incorrect information.** Past use of third-party import tools or incomplete imports can leave capture dates and other metadata missing or wrong, making time-based sorting harder.
 
-Apple library exports may mix camera photos with screenshots, screen recordings, and images saved from other apps. A **Live Photo** arrives as a photo and a short video; Finder shows them as separate files. Sorting these by hand can split a pair or leave its companion files behind.
+## How the workflow runs
 
-Gallery Organizer helps sort these exports while keeping related files together. It separates media it can confidently identify, sets confirmed duplicates aside, and flags uncertain files for review. It previews planned changes before you choose to apply them.
+1. **Main pass:** Sort confirmed camera photos and videos, keep Live Photo parts and companion files together, and set confirmed duplicates aside. Items that need more checking stay in the batch.
+2. **Remaining files:** Sort the batch again to separate screenshots, screen recordings, saved images, camera media identified on the second pass, and items needing review.
+3. **Optional library check:** Look for confirmed exact duplicates that are already in the organized main library and set redundant copies aside.
+4. **Optional date repair:** Repair missing capture dates in selected JPEG photos when enough evidence is available. The tool keeps backups and lists items that need manual review.
 
-## What it does
+## What it can organize
 
-1. **Sort the main batch.** Groups camera photos and videos with their Live Photo and sidecar companions. It files confirmed camera media by date, sets confirmed duplicates aside, and leaves uncertain items for another pass.
-2. **Sort what remains.** Separates confirmed screenshots and screen recordings, saved or downloaded images, camera media found in the second pass, and files needing review.
-3. **Check an existing photo library, if needed.** Finds confirmed exact duplicates already in the main library and sets redundant copies aside.
-4. **Repair selected JPEG dates, if needed.** Helps correct missing capture times when the required evidence is available, keeping backups and a review report.
+- **Camera photos and videos:** File confirmed media into folders by capture year and month.
+- **Live Photos and sidecars:** Keep related photo, video, and companion files together when their relationship can be confirmed.
+- **Duplicate imports:** Identify confirmed exact duplicates and place redundant copies in a separate folder for review.
+- **Different photos with the same name:** Avoid overwriting either file and report collisions that need review.
+- **Screenshots, recordings, and saved or downloaded images:** Separate them from camera photos rather than mixing everything into one timeline.
+- **Files with missing or conflicting information:** Set aside media with unclear origins, missing dates, or companion-file problems for manual review.
+- **Selected JPEG photos with missing capture dates:** Repair the date only when there is enough evidence, while keeping an original-file backup.
 
-Files with the same name are not silently overwritten. When a match or destination is uncertain, the scripts report it for review.
+The scripts preview changes before you apply them. They do not silently overwrite files with the same name; uncertain matches and destinations are reported for review.
 
 ## Getting started
 
