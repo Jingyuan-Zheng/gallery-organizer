@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """整理 Gallery 主库内的字节级重复副本。
 
-默认只预览。--apply 只移动已确认的冗余副本，绝不删除、覆盖、重命名或重新编码。
+默认只预览。--apply 会移动已确认的冗余副本，也可能合并 XMP 标注并清理不必要的复制编号；不会覆盖或重新编码主媒体。
 目标在 Old Duplicate 中镜像其 gallery_config.py 的 BACKUP_ROOT 下的路径。
 
 保留规则：
