@@ -36,7 +36,7 @@ except ImportError:
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from terminal_language import LocalizedArgumentParser, install_terminal_language, localized_input
+from terminal_language import LocalizedArgumentParser, install_terminal_language, localized_input, localized_format
 
 from gallery_config import (
     LANGUAGE,
@@ -238,19 +238,23 @@ def annotation_merge_analysis(source_xmp: Path, keep_xmp: Path) -> tuple[bool, l
             keep_values = [keep_values]
         additions = [value for value in source_values if value not in keep_values]
         if additions:
-            changes.append(f'{key} Add new {additions}')
+            changes.append(localized_format('{key} Add new {additions}', key=key, additions=additions))
     for key in XMP_REGION_GROUPS:
         if key not in source:
             continue
         if key not in keep:
-            changes.append(f'{key} Add complete face area')
+            changes.append(localized_format('{key} Add complete face area', key=key))
         elif source[key] != keep[key]:
-            conflicts.append(f'{key} Face area conflict')
+            conflicts.append(localized_format('{key} Face area conflict', key=key))
     if "Rating" in source:
         if "Rating" not in keep:
-            changes.append(f"Rating added {source['Rating']}")
+            changes.append(localized_format('Rating added {source_rating}', source_rating=source['Rating']))
         elif source["Rating"] != keep["Rating"]:
-            conflicts.append(f"Rating Conflict: {keep['Rating']} vs {source['Rating']}")
+            conflicts.append(localized_format(
+                'Rating Conflict: {kept_rating} vs {source_rating}',
+                kept_rating=keep['Rating'],
+                source_rating=source['Rating'],
+            ))
     if conflicts:
         return False, conflicts
     return True, changes or ['No new fields; source XMP is a redundant copy']
@@ -606,7 +610,7 @@ def duplicate_target(source: Path) -> Path:
     try:
         relative = source.resolve(strict=False).relative_to(BACKUP_ROOT.resolve(strict=False))
     except ValueError as exc:
-        raise ValueError(f'The source is not in Backup Apple: {source}') from exc
+        raise ValueError(localized_format('The source is not in Backup Apple: {source}', source=source)) from exc
     return DUPLICATE_ROOT / relative
 
 
@@ -790,12 +794,18 @@ def main() -> int:
     args = parser.parse_args()
     source_root = args.directory.expanduser().resolve(strict=False)
     if not source_root.is_dir():
-        print(f'The specified directory does not exist: {source_root}', file=sys.stderr)
+        print(localized_format(
+            'The specified directory does not exist: {source_root}',
+            source_root=source_root,
+        ), file=sys.stderr)
         return 2
     try:
         source_root.relative_to(LIBRARY_ROOT.resolve(strict=False))
     except ValueError:
-        print(f'The specified directory must be located within the main library: {LIBRARY_ROOT}', file=sys.stderr)
+        print(localized_format(
+            'The specified directory must be located within the main library: {LIBRARY_ROOT}',
+            LIBRARY_ROOT=LIBRARY_ROOT,
+        ), file=sys.stderr)
         return 2
     if not DUPLICATE_ROOT.is_dir() and args.apply:
         DUPLICATE_ROOT.mkdir(parents=True, exist_ok=True)
@@ -809,9 +819,9 @@ def main() -> int:
     # source, target, reference, source_hash, reference_hash
     moves: list[tuple[Path, Path, Path | None, str, str | None]] = []
     merges: list[tuple[Path, Path, Path, list[str]]] = []
-    print(f'Scanning directory: {source_root}')
-    print(f'Duplicate copy directory: {DUPLICATE_ROOT}')
-    print(f'Exact repetition group: {len(groups)}')
+    print(localized_format('Scanning directory: {source_root}', source_root=source_root))
+    print(localized_format('Duplicate copy directory: {DUPLICATE_ROOT}', DUPLICATE_ROOT=DUPLICATE_ROOT))
+    print(localized_format('Exact repetition group: {groups_count}', groups_count=len(groups)))
     protected_media = 0
     planned_sidecars: set[Path] = set()
     score = lambda path: canonical_score(path, source_root)
@@ -832,25 +842,42 @@ def main() -> int:
                     if is_plain_cross_number_jpeg_duplicate(source, keep, sidecars_by_key):
                         target = duplicate_target(source)
                         print(
-                            f'MOVE  {source}\n  ->  {target}\n  Reason: The JPEG image data with different numbering are identical and cannot be paired with the side car; the HEIC with the same numbering has a different shooting time and is not associated.'
+                            localized_format(
+                                'MOVE  {source}\n  ->  {target}\n  Reason: The JPEG image data with '
+                                'different numbering are identical and cannot be paired with the '
+                                'side car; the HEIC with the same numbering has a different '
+                                'shooting time and is not associated.',
+                                source=source,
+                                target=target,
+                            )
                         )
                         moves.append((source, target, keep, sha256(source), digest))
                         continue
                     protected_media += 1
                     print(
-                        f'PROTECT {source}\n  Reason: The screen pixels are identical but the metadata cannot be safely merged.'
+                        localized_format(
+                            'PROTECT {source}\n  Reason: The screen pixels are identical but the '
+                            'metadata cannot be safely merged.',
+                            source=source,
+                        )
                     )
                     continue
                 source_xmp, keep_xmp, heic, merge_details, merge_safe = merge
                 if not merge_safe:
                     protected_media += 1
                     print(
-                        f'PROTECT {source}\n  Reason: XMP field conflict\n'
+                        localized_format('PROTECT {source}\n  Reason: XMP field conflict\n', source=source)
                         + "\n".join(f"  {detail}" for detail in merge_details)
                     )
                     continue
                 print(
-                    f'MERGE XMP  {source_xmp}\n  ->  {keep_xmp}\n  GPS authoritative source: {heic}\n'
+                    localized_format(
+                        'MERGE XMP  {source_xmp}\n  ->  {keep_xmp}\n  GPS authoritative source: '
+                        '{heic}\n',
+                        source_xmp=source_xmp,
+                        keep_xmp=keep_xmp,
+                        heic=heic,
+                    )
                     + "\n".join(f"  {detail}" for detail in merge_details)
                 )
                 merges.append((source_xmp, keep_xmp, heic, merge_details))
@@ -858,7 +885,12 @@ def main() -> int:
                 print(f"MOVE  {source}\n  ->  {target}")
                 moves.append((source, target, keep, sha256(source), digest))
                 xmp_target = duplicate_target(source_xmp)
-                print(f'MOVE SIDECAR  {source_xmp}\n  ->  {xmp_target}\n  Reason: Its user annotations have been merged.')
+                print(localized_format(
+                    'MOVE SIDECAR  {source_xmp}\n  ->  {xmp_target}\n  Reason: Its user annotations '
+                    'have been merged.',
+                    source_xmp=source_xmp,
+                    xmp_target=xmp_target,
+                ))
                 moves.append((source_xmp, xmp_target, None, sha256(source_xmp), None))
                 planned_sidecars.add(source_xmp)
                 numbered_aae = source.with_suffix(".AAE")
@@ -868,7 +900,14 @@ def main() -> int:
                         and adjustment_data_hash(numbered_aae) == adjustment_data_hash(base_aae)):
                     aae_target = duplicate_target(numbered_aae)
                     print(
-                        f'MOVE SIDECAR  {numbered_aae}\n  ->  {aae_target}\n  KEEP SIDECAR  {base_aae}\n  Reason: AAE actual adjustmentData is the same; to remove the JPEG numbering archival redundancy supporting files.'
+                        localized_format(
+                            'MOVE SIDECAR  {numbered_aae}\n  ->  {aae_target}\n  KEEP SIDECAR  '
+                            '{base_aae}\n  Reason: AAE actual adjustmentData is the same; to remove '
+                            'the JPEG numbering archival redundancy supporting files.',
+                            numbered_aae=numbered_aae,
+                            aae_target=aae_target,
+                            base_aae=base_aae,
+                        )
                     )
                     moves.append((numbered_aae, aae_target, base_aae, sha256(numbered_aae), sha256(base_aae)))
                     planned_sidecars.add(numbered_aae)
@@ -878,7 +917,11 @@ def main() -> int:
             )
             if sidecar_moves is None:
                 protected_media += 1
-                print(f'PROTECT {source}\n  Reason: The same-named side car cannot be precisely paired with the retained item.')
+                print(localized_format(
+                    'PROTECT {source}\n  Reason: The same-named side car cannot be precisely paired '
+                    'with the retained item.',
+                    source=source,
+                ))
                 continue
             target = duplicate_target(source)
             print(f"MOVE  {source}\n  ->  {target}")
@@ -887,11 +930,24 @@ def main() -> int:
                 sidecar_target = duplicate_target(sidecar)
                 if sidecar_keep is None:
                     print(
-                        f'MOVE SIDECAR  {sidecar}\n  ->  {sidecar_target}\n  Reason: {reason}, archived with precise duplicate photos'
+                        localized_format(
+                            'MOVE SIDECAR  {sidecar}\n  ->  {sidecar_target}\n  Reason: {reason}, '
+                            'archived with precise duplicate photos',
+                            sidecar=sidecar,
+                            sidecar_target=sidecar_target,
+                            reason=reason,
+                        )
                     )
                 else:
                     print(
-                        f'MOVE SIDECAR  {sidecar}\n  ->  {sidecar_target}\n  KEEP SIDECAR  {sidecar_keep}\n  Reason: {reason}'
+                        localized_format(
+                            'MOVE SIDECAR  {sidecar}\n  ->  {sidecar_target}\n  KEEP SIDECAR  '
+                            '{sidecar_keep}\n  Reason: {reason}',
+                            sidecar=sidecar,
+                            sidecar_target=sidecar_target,
+                            sidecar_keep=sidecar_keep,
+                            reason=reason,
+                        )
                     )
                 moves.append((sidecar, sidecar_target, sidecar_keep, sidecar_hash, sidecar_keep_hash))
                 planned_sidecars.add(sidecar)
@@ -901,7 +957,14 @@ def main() -> int:
             continue
         target = duplicate_target(numbered_aae)
         print(
-            f'MOVE SIDECAR  {numbered_aae}\n  ->  {target}\n  KEEP SIDECAR  {canonical_aae}\n  Reason: AAE actual adjustmentData is the same; allows clearing the copy numbers of JPEG files.'
+            localized_format(
+                'MOVE SIDECAR  {numbered_aae}\n  ->  {target}\n  KEEP SIDECAR  {canonical_aae}\n  '
+                'Reason: AAE actual adjustmentData is the same; allows clearing the copy numbers '
+                'of JPEG files.',
+                numbered_aae=numbered_aae,
+                target=target,
+                canonical_aae=canonical_aae,
+            )
         )
         moves.append((numbered_aae, target, canonical_aae, sha256(numbered_aae), sha256(canonical_aae)))
         planned_sidecars.add(numbered_aae)
@@ -912,7 +975,14 @@ def main() -> int:
             continue
         target = duplicate_target(source)
         print(
-            f'MOVE STREAM-EQUIVALENT MOV  {source}\n  ->  {target}\n  KEEP MOV  {keep}\n  Reason: The video, audio, and Apple metadata streams are SHA-256 identical in every byte; only the QuickTime container timestamps differ.'
+            localized_format(
+                'MOVE STREAM-EQUIVALENT MOV  {source}\n  ->  {target}\n  KEEP MOV  {keep}\n  Reason: '
+                'The video, audio, and Apple metadata streams are SHA-256 identical in every byte; '
+                'only the QuickTime container timestamps differ.',
+                source=source,
+                target=target,
+                keep=keep,
+            )
         )
         moves.append((source, target, keep, sha256(source), sha256(keep)))
         already_planned_sources.add(source)
@@ -920,7 +990,13 @@ def main() -> int:
     for jpeg, heic, has_live_photo_mov in redundant_jpeg_renderings(source_root):
         target = duplicate_target(jpeg)
         print(
-            f'MOVE COMPAT JPEG  {jpeg}\n  ->  {target}\n  KEEP HEIC  {heic}\n  Reason: Same-named HEIC/JPEG image equivalent and no JPEG XMP;'
+            localized_format(
+                'MOVE COMPAT JPEG  {jpeg}\n  ->  {target}\n  KEEP HEIC  {heic}\n  Reason: Same-named '
+                'HEIC/JPEG image equivalent and no JPEG XMP;',
+                jpeg=jpeg,
+                target=target,
+                heic=heic,
+            )
             + ('Keep the same name Live Photo MOV' if has_live_photo_mov else 'Non Live Photo group')
         )
         moves.append((jpeg, target, heic, sha256(jpeg), sha256(heic)))
@@ -932,19 +1008,29 @@ def main() -> int:
         if not merge_safe:
             protected_media += 1
             print(
-                f'PROTECT {jpeg}\n  Reason: XMP field conflict\n'
+                localized_format('PROTECT {jpeg}\n  Reason: XMP field conflict\n', jpeg=jpeg)
                 + "\n".join(f"  {detail}" for detail in merge_details)
             )
             continue
         print(
-            f'MERGE HEIC XMP  {source_xmp}\n  ->  {heic_xmp}\n  GPS authoritative source: {heic}\n'
+            localized_format(
+                'MERGE HEIC XMP  {source_xmp}\n  ->  {heic_xmp}\n  GPS authoritative source: {heic}\n',
+                source_xmp=source_xmp,
+                heic_xmp=heic_xmp,
+                heic=heic,
+            )
             + "\n".join(f"  {detail}" for detail in merge_details)
         )
         merges.append((source_xmp, heic_xmp, heic, merge_details))
         jpeg_target = duplicate_target(jpeg)
         xmp_target = duplicate_target(source_xmp)
         print(f"MOVE COMPAT EDITED JPEG  {jpeg}\n  ->  {jpeg_target}")
-        print(f'MOVE SIDECAR  {source_xmp}\n  ->  {xmp_target}\n  Reason: Face annotations were transferred to the HEIC sidecar.')
+        print(localized_format(
+            'MOVE SIDECAR  {source_xmp}\n  ->  {xmp_target}\n  Reason: Face annotations were '
+            'transferred to the HEIC sidecar.',
+            source_xmp=source_xmp,
+            xmp_target=xmp_target,
+        ))
         moves.append((jpeg, jpeg_target, heic, sha256(jpeg), sha256(heic)))
         moves.append((source_xmp, xmp_target, None, sha256(source_xmp), None))
         planned_sidecars.add(source_xmp)
@@ -981,7 +1067,16 @@ def main() -> int:
 
     if not args.apply:
         print(
-            f'\nDRY RUN: Planned Move {len(moves)} A file; retain {len(paired_retained_sidecars)} paired sidecars retained; {len(unpaired_sidecars)} An unused side-car file that retains the main media, protection {protected_media} primary media files; no files were modified.'
+            localized_format(
+                '\nDRY RUN: Planned Move {moves_count} A file; retain '
+                '{paired_retained_sidecars_count} paired sidecars retained; '
+                '{unpaired_sidecars_count} An unused side-car file that retains the main media, '
+                'protection {protected_media} primary media files; no files were modified.',
+                moves_count=len(moves),
+                paired_retained_sidecars_count=len(paired_retained_sidecars),
+                unpaired_sidecars_count=len(unpaired_sidecars),
+                protected_media=protected_media,
+            )
         )
         return 0
 
@@ -989,24 +1084,39 @@ def main() -> int:
     # 边车不会因后续条目失败而被拆开。
     for source, target, reference, expected_source_hash, expected_reference_hash in moves:
         if not source.is_file() or (reference is not None and not reference.is_file()):
-            print(f'ERROR Source or retained file has changed: {source}', file=sys.stderr)
+            print(localized_format(
+                'ERROR Source or retained file has changed: {source}',
+                source=source,
+            ), file=sys.stderr)
             return 1
         if sha256(source) != expected_source_hash:
-            print(f'ERROR SHA-256 Verification failed: {source}', file=sys.stderr)
+            print(localized_format('ERROR SHA-256 Verification failed: {source}', source=source), file=sys.stderr)
             return 1
         if reference is not None and sha256(reference) != expected_reference_hash:
-            print(f'ERROR Retention item SHA-256 verification failed: {reference}', file=sys.stderr)
+            print(localized_format(
+                'ERROR Retention item SHA-256 verification failed: {reference}',
+                reference=reference,
+            ), file=sys.stderr)
             return 1
         if target.exists():
-            print(f'ERROR Duplicate destination already exists; refusing to overwrite: {target}', file=sys.stderr)
+            print(localized_format(
+                'ERROR Duplicate destination already exists; refusing to overwrite: {target}',
+                target=target,
+            ), file=sys.stderr)
             return 1
 
     for source_xmp, keep_xmp, heic, _merge_details in merges:
         if not source_xmp.is_file() or not heic.is_file():
-            print(f'ERROR The combined source has changed: {source_xmp}', file=sys.stderr)
+            print(localized_format(
+                'ERROR The combined source has changed: {source_xmp}',
+                source_xmp=source_xmp,
+            ), file=sys.stderr)
             return 1
         if not merge_xmp_annotations(source_xmp, keep_xmp, heic):
-            print(f'ERROR XMP metadata merge failed: {source_xmp}', file=sys.stderr)
+            print(localized_format(
+                'ERROR XMP metadata merge failed: {source_xmp}',
+                source_xmp=source_xmp,
+            ), file=sys.stderr)
             return 1
         print(f"MERGED {source_xmp} -> {keep_xmp}")
 
@@ -1015,11 +1125,20 @@ def main() -> int:
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.move(str(source), str(target))
         if not target.is_file() or sha256(target) != expected_source_hash:
-            print(f'ERROR SHA-256 verification failed after moving: {target}', file=sys.stderr); return 1
+            print(localized_format(
+                'ERROR SHA-256 verification failed after moving: {target}',
+                target=target,
+            ), file=sys.stderr); return 1
         moved += 1
         print(f"MOVED {source} -> {target}")
     renamed = rename_unnecessary_copy_suffixes(source_root)
-    print(f'\nCompleted: moved {moved}/{len(moves)} A duplicate copy, rename {renamed} A main library file.')
+    print(localized_format(
+        '\nCompleted: moved {moved}/{moves_count} A duplicate copy, rename {renamed} A main library '
+        'file.',
+        moved=moved,
+        moves_count=len(moves),
+        renamed=renamed,
+    ))
     return 0 if moved == len(moves) else 1
 
 

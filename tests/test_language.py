@@ -7,6 +7,7 @@ import re
 import shutil
 import subprocess
 import sys
+import string
 import tempfile
 import unittest
 
@@ -129,6 +130,10 @@ class LanguageTests(unittest.TestCase):
 
     def test_screenshot_destinations_follow_selected_language(self):
         chinese, english = self.copy_for("zh"), self.copy_for("en")
+        main_preview = self.run_script(english, "organize_gallery_media.py", self.batch)
+        self.assertEqual(main_preview.returncode, 0, main_preview.stderr)
+        self.assertNotRegex(main_preview.stdout + main_preview.stderr, HAN)
+        self.assertNotRegex(main_preview.stdout + main_preview.stderr, re.compile(r"[；：，（）]"))
         for folder, date_folder in ((chinese, "日期未知"), (english, "Date Unknown")):
             destination = self.media / "Gallery" / "Screenshots" / date_folder / "Screenshot_2024.png"
             result = self.run_script(folder, "organize_leftover_media.py", self.batch)
@@ -180,6 +185,29 @@ class LanguageTests(unittest.TestCase):
             result = subprocess.run([sys.executable, "-c", code], text=True, capture_output=True)
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("supports macOS only" if language == "en" else "仅支持 macOS", result.stderr)
+
+    def test_chinese_templates_have_matching_placeholders(self):
+        catalog = json.loads((ROOT / "zh_messages.json").read_text(encoding="utf-8"))
+        formatter = string.Formatter()
+        self.assertFalse([key for key in catalog if key.startswith(";")])
+        self.assertFalse([key for key in catalog if HAN.search(key)])
+        for script in SCRIPTS:
+            tree = ast.parse((ROOT / script).read_text(encoding="utf-8"))
+            for node in ast.walk(tree):
+                if not (isinstance(node, ast.Call)
+                        and isinstance(node.func, ast.Name)
+                        and node.func.id == "localized_format"
+                        and node.args and isinstance(node.args[0], ast.Constant)):
+                    continue
+                template = node.args[0].value
+                with self.subTest(script=script, line=node.lineno):
+                    self.assertIn(template, catalog)
+                    fields = lambda text: {
+                        field for _, field, _, _ in formatter.parse(text) if field
+                    }
+                    supplied = {keyword.arg for keyword in node.keywords}
+                    self.assertEqual(fields(template), supplied)
+                    self.assertEqual(fields(catalog[template]), supplied)
 
     def test_catalog_covers_runtime_chinese_literals(self):
         catalog = json.loads((ROOT / "en_messages.json").read_text(encoding="utf-8"))

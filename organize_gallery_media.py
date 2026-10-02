@@ -952,7 +952,7 @@ def read_metadata_batch(
     try:
         rows = json.loads(result.stdout)
     except json.JSONDecodeError as exc:
-        raise RuntimeError(f'Unable to parse ExifTool JSON: {exc}') from exc
+        raise RuntimeError(localized_format('Unable to parse ExifTool JSON: {exc}', exc=exc)) from exc
 
     result_map: Dict[str, dict] = {}
 
@@ -1410,11 +1410,21 @@ def verify_android_video_time_against_filename(
         if offset_hours == 0:
             interpretation = 'The original value of metadata is in local time.'
         else:
-            interpretation = f'Using UTC+{offset_hours} Convert to local time'
+            interpretation = localized_format(
+                'Using UTC+{offset_hours} Convert to local time',
+                offset_hours=offset_hours,
+            )
 
         if mode_rank == 0:
             reason = (
-                f'{field_name}={format_timestamp(raw_timestamp)}；{interpretation}; differs from the local time of the filename {difference} seconds'
+                localized_format(
+                    '{field_name}={raw_time}; {interpretation}; differs from the local time in the '
+                    'filename by {difference} seconds',
+                    field_name=field_name,
+                    raw_time=format_timestamp(raw_timestamp),
+                    interpretation=interpretation,
+                    difference=difference,
+                )
             )
             source = f"metadata:{field_name}"
         else:
@@ -1430,7 +1440,18 @@ def verify_android_video_time_against_filename(
                 adjusted_value.second,
             )
             reason = (
-                f'{field_name}={format_timestamp(raw_timestamp)}；{interpretation}; subtract Duration={matched_duration:.3f} Instant calculation of the start time of the recording {format_timestamp(inferred_start)}; differs from the local time of the filename {difference} seconds'
+                localized_format(
+                    '{field_name}={raw_time}; {interpretation}; subtracting '
+                    'Duration={matched_duration:.3f} seconds gives recording start '
+                    '{recording_start}, which differs from the local time in the filename by '
+                    '{difference} seconds',
+                    field_name=field_name,
+                    raw_time=format_timestamp(raw_timestamp),
+                    interpretation=interpretation,
+                    matched_duration=matched_duration,
+                    recording_start=format_timestamp(inferred_start),
+                    difference=difference,
+                )
             )
             source = f"metadata:{field_name}-Duration"
 
@@ -1464,7 +1485,14 @@ def verify_android_video_time_against_filename(
             False,
             None,
             None,
-            f'Only TrackCreateDate matches: {format_timestamp(raw_timestamp)} via {offset_text} The suffix differs from the filename. {difference} Seconds; TrackCreateDate alone is insufficient to confirm the camera shooting time.',
+            localized_format(
+                'Only TrackCreateDate matches: {raw_time} via {offset_text} The suffix differs '
+                'from the filename. {difference} Seconds; TrackCreateDate alone is insufficient to '
+                'confirm the camera shooting time.',
+                raw_time=format_timestamp(raw_timestamp),
+                offset_text=offset_text,
+                difference=difference,
+            ),
         )
 
     if closest is not None:
@@ -1484,13 +1512,30 @@ def verify_android_video_time_against_filename(
                 False,
                 None,
                 None,
-                f'The strong video time field failed verification; the closest is {field_name}={format_timestamp(raw_timestamp)} via {offset_text} Subtract again Duration={closest_duration:.3f} Seconds, still differ {difference} seconds',
+                localized_format(
+                    'The strong video time field failed verification; the closest is '
+                    '{field_name}={raw_time} via {offset_text} Subtract again '
+                    'Duration={closest_duration:.3f} Seconds, still differ {difference} seconds',
+                    field_name=field_name,
+                    raw_time=format_timestamp(raw_timestamp),
+                    offset_text=offset_text,
+                    closest_duration=closest_duration,
+                    difference=difference,
+                ),
             )
         return (
             False,
             None,
             None,
-            f'The strong video time field failed verification; the closest is {field_name}={format_timestamp(raw_timestamp)} via {offset_text} Still differ later on. {difference} seconds',
+            localized_format(
+                'The strong video time field failed verification; the closest is '
+                '{field_name}={raw_time} via {offset_text} Still differ later on. {difference} '
+                'seconds',
+                field_name=field_name,
+                raw_time=format_timestamp(raw_timestamp),
+                offset_text=offset_text,
+                difference=difference,
+            ),
         )
 
     return (
@@ -1567,11 +1612,17 @@ def _run_xattr(args: Sequence[str]) -> subprocess.CompletedProcess[bytes]:
             check=False,
         )
     except FileNotFoundError as exc:
-        raise RuntimeError(f'Unable to find macOS xattr tool: {XATTR_TOOL}') from exc
+        raise RuntimeError(localized_format(
+            'Unable to find macOS xattr tool: {XATTR_TOOL}',
+            XATTR_TOOL=XATTR_TOOL,
+        )) from exc
 
 
 def _xattr_error_text(result: subprocess.CompletedProcess[bytes]) -> str:
-    return result.stderr.decode("utf-8", errors="replace").strip() or f'Exit code {result.returncode}'
+    return result.stderr.decode("utf-8", errors="replace").strip() or localized_format(
+        'Exit code {result_returncode}',
+        result_returncode=result.returncode,
+    )
 
 
 def _list_xattr_names(path: Path, *, refresh: bool = False) -> Set[str]:
@@ -1582,7 +1633,11 @@ def _list_xattr_names(path: Path, *, refresh: bool = False) -> Set[str]:
 
     result = _run_xattr([str(path)])
     if result.returncode != 0:
-        raise OSError(f'Cannot list extended attributes: {path}：{_xattr_error_text(result)}')
+        raise OSError(localized_format(
+            'Cannot list extended attributes: {path}: {error}',
+            path=path,
+            error=_xattr_error_text(result),
+        ))
     names = {
         line.strip()
         for line in result.stdout.decode("utf-8", errors="replace").splitlines()
@@ -1602,20 +1657,34 @@ def _read_xattr_bytes(path: Path, name: str) -> Optional[bytes]:
         try:
             return bytes.fromhex(result.stdout.decode("ascii", errors="strict"))
         except (UnicodeDecodeError, ValueError) as exc:
-            raise OSError(f'xattr Hexadecimal output cannot be parsed: {path} [{name}]') from exc
+            raise OSError(localized_format(
+                'xattr Hexadecimal output cannot be parsed: {path} [{name}]',
+                path=path,
+                name=name,
+            )) from exc
 
     # 不依赖 stderr 的语言/文案；列出属性名来确认是否只是“属性不存在”。
     names = _list_xattr_names(path)
     if name not in names:
         return None
-    raise OSError(f'Failed to read extended attributes: {path} [{name}]：{_xattr_error_text(result)}')
+    raise OSError(localized_format(
+        'Failed to read extended attributes: {path} [{name}]: {error}',
+        path=path,
+        name=name,
+        error=_xattr_error_text(result),
+    ))
 
 
 def _write_xattr_bytes(path: Path, name: str, value: bytes) -> None:
     """使用 xattr -wx 写入原始字节。"""
     result = _run_xattr(["-wx", name, value.hex(), str(path)])
     if result.returncode != 0:
-        raise OSError(f'Failed to write extended attributes: {path} [{name}]：{_xattr_error_text(result)}')
+        raise OSError(localized_format(
+            'Failed to write extended attributes: {path} [{name}]: {error}',
+            path=path,
+            name=name,
+            error=_xattr_error_text(result),
+        ))
     cache_key = str(path.resolve(strict=False))
     if cache_key in _XATTR_NAME_CACHE:
         _XATTR_NAME_CACHE[cache_key].add(name)
@@ -1627,7 +1696,12 @@ def _remove_xattr_if_present(path: Path, name: str) -> None:
         return
     result = _run_xattr(["-d", name, str(path)])
     if result.returncode != 0:
-        raise OSError(f'Failed to delete the extended attribute: {path} [{name}]：{_xattr_error_text(result)}')
+        raise OSError(localized_format(
+            'Failed to delete the extended attribute: {path} [{name}]: {error}',
+            path=path,
+            name=name,
+            error=_xattr_error_text(result),
+        ))
     cache_key = str(path.resolve(strict=False))
     if cache_key in _XATTR_NAME_CACHE:
         _XATTR_NAME_CACHE[cache_key].discard(name)
@@ -1649,7 +1723,7 @@ def _decode_finder_tags(raw: Optional[bytes]) -> List[str]:
     try:
         value = plistlib.loads(raw)
     except Exception as exc:
-        raise ValueError(f'Finder tags xattr is not a valid plist: {exc}') from exc
+        raise ValueError(localized_format('Finder tags xattr is not a valid plist: {exc}', exc=exc)) from exc
 
     if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
         raise ValueError('Finder tags xattr are not string arrays')
@@ -1712,11 +1786,11 @@ def build_custom_filename_tag_plan(
 def _verify_finder_tag(path: Path, tag_name: str = CUSTOM_FILENAME_FINDER_TAG) -> None:
     existed, raw = _read_finder_tag_xattr(path)
     if not existed:
-        raise RuntimeError(f'xattr does not exist after Finder tags are written: {path}')
+        raise RuntimeError(localized_format('xattr does not exist after Finder tags are written: {path}', path=path))
 
     tags = _decode_finder_tags(raw)
     if not any(_finder_tag_base_name(item) == tag_name for item in tags):
-        raise RuntimeError(f'Finder tag verification failed after writing: {path}')
+        raise RuntimeError(localized_format('Finder tag verification failed after writing: {path}', path=path))
 
 
 def _restore_finder_tag_state(path: Path, item: FinderTagPlanItem) -> None:
@@ -1740,7 +1814,10 @@ def apply_finder_tag_plan(
     try:
         for item in plan:
             if not item.target.exists():
-                raise FileNotFoundError(f'Finder tag target does not exist: {item.target}')
+                raise FileNotFoundError(localized_format(
+                    'Finder tag target does not exist: {item_target}',
+                    item_target=item.target,
+                ))
 
             _write_xattr_bytes(item.target, FINDER_TAG_XATTR, item.desired_xattr_raw)
             _verify_finder_tag(item.target)
@@ -1762,7 +1839,10 @@ def apply_finder_tag_plan(
 
         message = str(exc)
         if restore_errors:
-            message += '; Finder tag restoration failed: ' + " | ".join(restore_errors)
+            message = localized_format(
+                '{message}; Finder tag restoration failed: {errors}',
+                message=message, errors=' | '.join(restore_errors),
+            )
         return False, message, 0
 
 
@@ -1778,13 +1858,20 @@ def _move_mappings_transactionally(
     destination_keys: Set[str] = set()
     for source, destination in active:
         if not source.exists():
-            raise FileNotFoundError(f'Source does not exist: {source}')
+            raise FileNotFoundError(localized_format('Source does not exist: {source}', source=source))
         key = str(destination.resolve(strict=False)).casefold()
         if key in destination_keys:
-            raise FileExistsError(f'Multiple mapping targets in the same group are duplicated: {destination}')
+            raise FileExistsError(localized_format(
+                'Multiple mapping targets in the same group are duplicated: {destination}',
+                destination=destination,
+            ))
         destination_keys.add(key)
         if destination.exists() and key not in source_keys:
-            raise FileExistsError(f'The target exists and does not belong to the source of this exchange: {destination}')
+            raise FileExistsError(localized_format(
+                'The target exists and does not belong to the source of this exchange: '
+                '{destination}',
+                destination=destination,
+            ))
         destination.parent.mkdir(parents=True, exist_ok=True)
 
     staged: List[Tuple[Path, Path, Path]] = []
@@ -1793,13 +1880,19 @@ def _move_mappings_transactionally(
         for index, (source, destination) in enumerate(active):
             temporary = source.parent / f".{source.name}.gallery-move-{os.getpid()}-{index}.tmp"
             if temporary.exists():
-                raise FileExistsError(f'The transaction temporary path exists: {temporary}')
+                raise FileExistsError(localized_format(
+                    'The transaction temporary path exists: {temporary}',
+                    temporary=temporary,
+                ))
             shutil.move(str(source), str(temporary))
             staged.append((source, destination, temporary))
 
         for source, destination, temporary in staged:
             if destination.exists():
-                raise FileExistsError(f'The target still exists after saving: {destination}')
+                raise FileExistsError(localized_format(
+                    'The target still exists after saving: {destination}',
+                    destination=destination,
+                ))
             shutil.move(str(temporary), str(destination))
             committed.append((source, destination, temporary))
 
@@ -1821,7 +1914,10 @@ def _move_mappings_transactionally(
                 rollback_errors.append(f"{temporary} -> {source}: {rollback_exc}")
         message = str(exc)
         if rollback_errors:
-            message += '; Rollback failed: ' + " | ".join(rollback_errors)
+            message = localized_format(
+                '{message}; Rollback failed: {errors}',
+                message=message, errors=' | '.join(rollback_errors),
+            )
         raise RuntimeError(message) from exc
 
 
@@ -2056,7 +2152,7 @@ def read_source_xattrs(path: Path) -> Tuple[List[str], Optional[str], Optional[s
     try:
         names = _list_xattr_names(path)
     except OSError as exc:
-        return where_froms, quarantine, f'xattr list reading failed: {exc}'
+        return where_froms, quarantine, localized_format('xattr list reading failed: {exc}', exc=exc)
 
     if WHERE_FROMS_XATTR in names:
         try:
@@ -2073,7 +2169,7 @@ def read_source_xattrs(path: Path) -> Tuple[List[str], Optional[str], Optional[s
                     if decoded:
                         where_froms = [decoded]
         except OSError as exc:
-            errors.append(f'WhereFroms xattr read failed: {exc}')
+            errors.append(localized_format('WhereFroms xattr read failed: {exc}', exc=exc))
 
     if QUARANTINE_XATTR in names:
         try:
@@ -2081,7 +2177,7 @@ def read_source_xattrs(path: Path) -> Tuple[List[str], Optional[str], Optional[s
             if raw:
                 quarantine = raw.decode("utf-8", errors="replace").strip() or None
         except OSError as exc:
-            errors.append(f'quarantine xattr read failed: {exc}')
+            errors.append(localized_format('quarantine xattr read failed: {exc}', exc=exc))
 
     return where_froms, quarantine, "；".join(errors) if errors else None
 
@@ -2146,7 +2242,10 @@ def classify_source_evidence(info: MediaInfo, source_root: Path) -> Tuple[str, s
         return SOURCE_STATE_EXCLUDED, 'Clearly screenshot file name/directory', ['Screenshot name or screenshot directory']
 
     if info.kind == "video" and SCREEN_RECORDING_NAME_RE.search(path.stem):
-        return SOURCE_STATE_EXCLUDED, 'Specify the screen recording filename', [f'File name: {path.name}']
+        return SOURCE_STATE_EXCLUDED, 'Specify the screen recording filename', [localized_format(
+            'File name: {path_name}',
+            path_name=path.name,
+        )]
 
     # 2) metadata 明确写出截图/屏幕录制。
     metadata_text = metadata_text_for_source_detection(info.metadata)
@@ -2195,7 +2294,7 @@ def classify_source_evidence(info: MediaInfo, source_root: Path) -> Tuple[str, s
     # agent=Photos；这必须视为中性，不能因此阻止相机原片整理。
     # 未知 agent 也只作诊断，不单独造成 AMBIGUOUS。
     if risky_dirs:
-        evidence.append(f'Suspicious source directory={risky_dirs[0]}')
+        evidence.append(localized_format('Suspicious source directory={directory}', directory=risky_dirs[0]))
     if xattr_error:
         evidence.append(xattr_error)
 
@@ -2362,7 +2461,11 @@ def determine_camera_origin(info: MediaInfo) -> Tuple[bool, str]:
         )
         return (
             True,
-            f'DateTimeOriginal + IMG/MVIMG/PANO file name time verification passed: difference {difference} Seconds; sorted by DateTimeOriginal',
+            localized_format(
+                'DateTimeOriginal + IMG/MVIMG/PANO file name time verification passed: difference '
+                '{difference} Seconds; sorted by DateTimeOriginal',
+                difference=difference,
+            ),
         )
 
     if APPLE_IMG_RE.fullmatch(path.stem):
@@ -2392,20 +2495,26 @@ def determine_camera_origin(info: MediaInfo) -> Tuple[bool, str]:
 
         if prefix not in expected_prefixes:
             expected_text = "/".join(expected_prefixes)
-            return False, f'The file name is not as expected. {expected_text}_... Camera format'
+            return False, localized_format(
+                'The file name is not as expected. {expected_text}_... Camera format',
+                expected_text=expected_text,
+            )
 
         if info.kind == "video" and prefix in ("VID", "MVIMG"):
             if info.android_video_time_verified:
                 return (
                     True,
-                    'Standard Android VID/MVIMG time verification passed: '
-                    + info.android_video_time_reason
-                    + '; Explains UTC/local time only in memory, does not modify media metadata',
+                    localized_format(
+                        'Standard Android VID/MVIMG time verification passed: {reason}; Explains UTC/local time only in memory, does not modify media metadata',
+                        reason=info.android_video_time_reason,
+                    ),
                 )
             return (
                 False,
-                'Standard Android VID/MVIMG time verification failed: '
-                + (info.android_video_time_reason or 'No available verification results'),
+                localized_format(
+                    'Standard Android VID/MVIMG time verification failed: {reason}',
+                    reason=info.android_video_time_reason or 'No available verification results',
+                ),
             )
 
         if info.timestamp is None:
@@ -2422,7 +2531,13 @@ def determine_camera_origin(info: MediaInfo) -> Tuple[bool, str]:
         ):
             return (
                 False,
-                f'The complete time of the Android filename differs from the embedded metadata time. {difference} Seconds, exceeding the allowed {TIME_TOLERANCE_SECONDS} Seconds; and does not meet the stronger reliable metadata rules',
+                localized_format(
+                    'The complete time of the Android filename differs from the embedded metadata '
+                    'time. {difference} Seconds, exceeding the allowed {TIME_TOLERANCE_SECONDS} '
+                    'Seconds; and does not meet the stronger reliable metadata rules',
+                    difference=difference,
+                    TIME_TOLERANCE_SECONDS=TIME_TOLERANCE_SECONDS,
+                ),
             )
 
         if has_device_identity(info.metadata):
@@ -2439,7 +2554,11 @@ def determine_camera_origin(info: MediaInfo) -> Tuple[bool, str]:
             return False, 'Custom/non-standard videos have embedded timestamps, but lack device/camera identity metadata.'
         if info.date_source == "metadata:TrackCreateDate":
             return False, 'Custom/non-standard videos only have TrackCreateDate; this field may be re-encoded/packaged and cannot be independently confirmed as actual camera footage.'
-        return False, f'Source of time for custom/non-standard videos {info.date_source} Has not met the credible threshold for independent classification'
+        return False, localized_format(
+            'Source of time for custom/non-standard videos {info_date_source} Has not met the '
+            'credible threshold for independent classification',
+            info_date_source=info.date_source,
+        )
 
     return False, 'It is impossible to confirm that the media was actually shot by the mobile phone camera.'
 
@@ -2577,7 +2696,10 @@ def custom_named_pair_is_trustworthy(
             still_info.timestamp,
             video_info.timestamp,
         )
-        return False, f'The matching time for custom filenames differs. {difference} seconds'
+        return False, localized_format(
+            'The matching time for custom filenames differs. {difference} seconds',
+            difference=difference,
+        )
 
     still_id = normalize_identifier(still_info.content_id)
     video_id = normalize_identifier(video_info.content_id)
@@ -2595,7 +2717,11 @@ def custom_named_pair_is_trustworthy(
     )
     return (
         True,
-        f'Custom file names are stem + reliable static images EXIF + consistent embedded timestamps between both parties (difference {difference} seconds)',
+        localized_format(
+            'Custom file names are stem + reliable static images EXIF + consistent embedded '
+            'timestamps between both parties (difference {difference} seconds)',
+            difference=difference,
+        ),
     )
 
 
@@ -2898,7 +3024,7 @@ def evaluate_photo_variant_relation(
         and b.date_source == "metadata:DateTimeOriginal"
     )
     if both_original_time and diff is not None and diff > TIME_TOLERANCE_SECONDS:
-        return "collision", f'The two DateTimeOriginals differ. {diff} seconds'
+        return "collision", localized_format('The two DateTimeOriginals differ. {diff} seconds', diff=diff)
 
     # 常见 iPhone 导出：HEIC 保留完整相机 metadata，旁边的 JPG 被剥离 metadata，
     # 但两者同 stem、尺寸比例一致且文件系统 mtime 几乎同时。这个组合比低分辨率
@@ -2927,33 +3053,60 @@ def evaluate_photo_variant_relation(
     ):
         return (
             "confirmed",
-            f'HEIC/JPEG export companion evidence is consistent: one file retains DateTimeOriginal, the other lacks metadata; aspect ratio is consistent, but filesystem mtime differs. {filesystem_time_diff:.3f}s',
+            localized_format(
+                'HEIC/JPEG export companion evidence is consistent: one file retains '
+                'DateTimeOriginal, the other lacks metadata; aspect ratio is consistent, but '
+                'filesystem mtime differs. {filesystem_time_diff:.3f}s',
+                filesystem_time_diff=filesystem_time_diff,
+            ),
         )
 
     similarity = visual_similarity(a.path, b.path, visual_cache)
     sim_text = 'Unavailable' if similarity is None else f"{similarity:.3f}"
 
     if similarity is not None and similarity < VISUAL_DIFFERENT_THRESHOLD:
-        return "collision", f'The images are clearly different (dHash similarity {similarity:.3f}）'
+        return "collision", localized_format(
+            'The images are clearly different (dHash similarity {similarity:.3f})',
+            similarity=similarity,
+        )
 
     # 强视觉一致：允许补足某次导出造成的设备/日期字段缺失或 CreateDate 变化。
     if similarity is not None and similarity >= VISUAL_SIMILARITY_THRESHOLD:
         if not device_conflict:
             if diff is None or diff <= TIME_TOLERANCE_SECONDS:
-                return "confirmed", f'Images are highly similar in height {similarity:.3f}, no conflict in time'
+                return "confirmed", localized_format(
+                    'Images are highly similar in height {similarity:.3f}, no conflict in time',
+                    similarity=similarity,
+                )
             if not both_original_time and similarity >= 0.96:
-                return "confirmed", f'Images are highly similar in height {similarity:.3f}; at least one of them is not DateTimeOriginal, allowing time changes to be exported'
+                return "confirmed", localized_format(
+                    'Images are highly similar (dHash {similarity:.3f}); at least one time source '
+                    'is not DateTimeOriginal, so export-time differences are allowed.',
+                    similarity=similarity,
+                )
 
     # 图像相似度不可用时，才退回很强的元数据组合；
     # 若图像已经成功比较但不到确认阈值，不让元数据覆盖这个视觉疑点。
     if similarity is None and diff is not None and diff <= 2 and not device_conflict and dims_ok:
         if both_original_time or (sig_a and sig_b and sig_a == sig_b):
-            return "confirmed", f'The shooting time is different. {diff} Seconds, device/size evidence consistent; image similarity {sim_text}'
+            return "confirmed", localized_format(
+                'The shooting time is different. {diff} Seconds, device/size evidence consistent; '
+                'image similarity {sim_text}',
+                diff=diff,
+                sim_text=sim_text,
+            )
 
     if device_conflict and (diff is None or diff > 2):
-        return "collision", f'Device information conflict; image similarity {sim_text}'
+        return "collision", localized_format(
+            'Device information conflict; image similarity {sim_text}',
+            sim_text=sim_text,
+        )
 
-    return "ambiguous", f'Insufficient evidence; time difference {diff} seconds; image similarity {sim_text}'
+    return "ambiguous", localized_format(
+        'Insufficient evidence; time difference {diff} seconds; image similarity {sim_text}',
+        diff=diff,
+        sim_text=sim_text,
+    )
 
 
 def build_photo_variant_families(
@@ -3006,7 +3159,12 @@ def build_photo_variant_families(
                     problems.append(
                         Problem(
                             str(a),
-                            f'The relationship between multiple formats of photos with the same stem is uncertain: {a.name} / {b.name}；{reason}',
+                            localized_format(
+                                'The relationship between multiple formats of photos with the same stem is uncertain: {a_name} / {b_name}; {reason}',
+                                a_name=a.name,
+                                b_name=b.name,
+                                reason=reason,
+                            ),
                             "warning",
                         )
                     )
@@ -3105,12 +3263,15 @@ def load_sidecar_content_evidence(
         size = path.stat().st_size
         if size > MAX_SIDECAR_TEXT_BYTES:
             evidence.parse_notes.append(
-                f'sidecar exceeds {MAX_SIDECAR_TEXT_BYTES // (1024 * 1024)} MiB, skip the full text analysis'
+                localized_format(
+                    'sidecar exceeds {limit_mib} MiB, skip the full text analysis',
+                    limit_mib=MAX_SIDECAR_TEXT_BYTES // (1024 * 1024),
+                )
             )
             return evidence
         data = path.read_bytes()
     except OSError as exc:
-        evidence.parse_notes.append(f'Read failed: {exc}')
+        evidence.parse_notes.append(localized_format('Read failed: {exc}', exc=exc))
         return evidence
 
     strings: Set[str] = set()
@@ -3202,16 +3363,16 @@ def sidecar_metadata_score(sidecar: MediaInfo, media: MediaInfo) -> Tuple[int, L
     if time_diff is not None:
         if time_diff <= 2:
             score += 4
-            reasons.append(f'Time difference {time_diff}s')
+            reasons.append(localized_format('Time difference {time_diff}s', time_diff=time_diff))
         elif time_diff <= TIME_TOLERANCE_SECONDS:
             score += 2
-            reasons.append(f'Time difference {time_diff}s')
+            reasons.append(localized_format('Time difference {time_diff}s', time_diff=time_diff))
         elif (
             sidecar.date_source == "metadata:DateTimeOriginal"
             and media.date_source == "metadata:DateTimeOriginal"
         ):
             score -= 6
-            reasons.append(f'DateTimeOriginal conflict {time_diff}s')
+            reasons.append(localized_format('DateTimeOriginal conflict {time_diff}s', time_diff=time_diff))
 
     side_sig = device_signature(sidecar.metadata)
     media_sig = device_signature(media.metadata)
@@ -3243,13 +3404,19 @@ def sidecar_metadata_score(sidecar: MediaInfo, media: MediaInfo) -> Tuple[int, L
             duration_diff = abs(side_duration - media_duration)
             if duration_diff <= 1.0:
                 score += 4
-                reasons.append(f'Duration difference {duration_diff:.2f}s')
+                reasons.append(localized_format(
+                    'Duration difference {duration_diff:.2f}s',
+                    duration_diff=duration_diff,
+                ))
             elif duration_diff <= 3.0:
                 score += 2
-                reasons.append(f'Duration difference {duration_diff:.2f}s')
+                reasons.append(localized_format(
+                    'Duration difference {duration_diff:.2f}s',
+                    duration_diff=duration_diff,
+                ))
             elif duration_diff > 5.0:
                 score -= 4
-                reasons.append(f'Time conflict {duration_diff:.2f}s')
+                reasons.append(localized_format('Time conflict {duration_diff:.2f}s', duration_diff=duration_diff))
 
     if ext == ".aae" and media.kind == "photo":
         score += 1
@@ -3343,7 +3510,11 @@ def resolve_sidecar_targets(
                             parsed,
                         )
                         if direct_difference is not None:
-                            description = f'{field_name}={format_timestamp(parsed)}(Direct comparison)'
+                            description = localized_format(
+                                '{field_name}={timestamp}(Direct comparison)',
+                                field_name=field_name,
+                                timestamp=format_timestamp(parsed),
+                            )
                             if best is None or direct_difference < best[0]:
                                 best = (direct_difference, description)
 
@@ -3355,7 +3526,11 @@ def resolve_sidecar_targets(
                                 explicit_offset,
                             )
                             if difference is not None:
-                                description = f'{field_name}={value}(Explicit time zone normalization)'
+                                description = localized_format(
+                                    '{field_name}={value}(Explicit time zone normalization)',
+                                    field_name=field_name,
+                                    value=value,
+                                )
                                 if best is None or difference < best[0]:
                                     best = (difference, description)
 
@@ -3370,7 +3545,13 @@ def resolve_sidecar_targets(
                             if difference is None:
                                 continue
                             description = (
-                                f'{field_name}={format_timestamp(parsed)} + {offset_reason}(Time zone unification)'
+                                localized_format(
+                                    '{field_name}={timestamp} + {offset_reason}(Time zone '
+                                    'unification)',
+                                    field_name=field_name,
+                                    timestamp=format_timestamp(parsed),
+                                    offset_reason=offset_reason,
+                                )
                             )
                             if best is None or difference < best[0]:
                                 best = (difference, description)
@@ -3392,7 +3573,13 @@ def resolve_sidecar_targets(
                             if difference is None:
                                 continue
                             description = (
-                                f'{field_name}={format_timestamp(parsed)}, by {xmp_reason} Provide explicit time zone'
+                                localized_format(
+                                    '{field_name}={timestamp}, by {xmp_reason} Provide explicit '
+                                    'time zone',
+                                    field_name=field_name,
+                                    timestamp=format_timestamp(parsed),
+                                    xmp_reason=xmp_reason,
+                                )
                             )
                             if best is None or difference < best[0]:
                                 best = (difference, description)
@@ -3400,7 +3587,14 @@ def resolve_sidecar_targets(
                 if best is not None and best[0] <= APPLE_ORIGINAL_ADJUSTMENT_TIME_TOLERANCE_SECONDS:
                     verified_targets.add(candidate.path)
                     verified_reasons.append(
-                        f'{candidate.path.name}: adjustmentTimestamp(UTC)={format_timestamp(evidence.aae_adjustment_timestamp)} with {best[1]}Difference {best[0]} seconds'
+                        localized_format(
+                            '{name}: adjustmentTimestamp(UTC)={adjustment_time} with '
+                            '{time_source}Difference {difference_seconds} seconds',
+                            name=candidate.path.name,
+                            adjustment_time=format_timestamp(evidence.aae_adjustment_timestamp),
+                            time_source=best[1],
+                            difference_seconds=best[0],
+                        )
                     )
 
         if verified_targets:
@@ -3539,7 +3733,7 @@ def resolve_sidecar_targets(
             return SidecarResolution(
                 "confirmed",
                 {best_info.path},
-                f'sidecar metadata unique matching score {best_score}：' + ", ".join(best_reasons),
+                localized_format('Sidecar metadata has a unique match score of {best_score}: {reasons}', best_score=best_score, reasons=", ".join(best_reasons)),
             )
 
     score_text = "; ".join(
@@ -3627,8 +3821,7 @@ def sidecars_for_media_group_indexed(
 
         outsiders = sorted((p.name for p in targets - media_set), key=str.casefold)
         ambiguous.append(
-            f'{candidate.name} Membership across current group: {resolution.reason}; External candidate group: '
-            + ", ".join(outsiders)
+            localized_format('{candidate_name} spans this media group: {resolution_reason}; external candidates: {outsiders}', candidate_name=candidate.name, resolution_reason=resolution.reason, outsiders=", ".join(outsiders))
         )
 
     return sorted(result, key=lambda p: (str(p.parent).casefold(), p.name.casefold())), ambiguous
@@ -3684,8 +3877,7 @@ def sidecars_for_media_group(
 
             outsiders = sorted((p.name for p in targets - media_set), key=str.casefold)
             ambiguous.append(
-                f'{candidate.name} Membership across current group: {resolution.reason}; External candidate group: '
-                + ", ".join(outsiders)
+                localized_format('{candidate_name} spans this media group: {resolution_reason}; external candidates: {outsiders}', candidate_name=candidate.name, resolution_reason=resolution.reason, outsiders=", ".join(outsiders))
             )
 
     return sorted(result, key=lambda p: (str(p.parent).casefold(), p.name.casefold())), ambiguous
@@ -3814,14 +4006,27 @@ def build_groups(
         ]
         if excluded_members:
             details = " | ".join(
-                f"{item.path.name}: {item.source_reason}"
-                + (f"（{'; '.join(item.source_evidence)}）" if item.source_evidence else "")
+                localized_format(
+                    '{name}: {reason} ({evidence})',
+                    name=item.path.name,
+                    reason=item.source_reason,
+                    evidence='; '.join(item.source_evidence),
+                ) if item.source_evidence else localized_format(
+                    '{name}: {reason}',
+                    name=item.path.name,
+                    reason=item.source_reason,
+                )
                 for item in excluded_members
             )
             problems.append(
                 Problem(
                     str(primary_path),
-                    f'Strong negative evidence of source is prioritized over EXIF,{description} Maintain the entire group in place: {details}',
+                    localized_format(
+                        'Strong negative evidence of source is prioritized over EXIF,{description} '
+                        'Maintain the entire group in place: {details}',
+                        description=description,
+                        details=details,
+                    ),
                 )
             )
             consumed.update(media_set)
@@ -3834,14 +4039,28 @@ def build_groups(
         ]
         if ambiguous_members:
             details = " | ".join(
-                f"{item.path.name}: {item.source_reason}"
-                + (f"（{'; '.join(item.source_evidence)}）" if item.source_evidence else "")
+                localized_format(
+                    '{name}: {reason} ({evidence})',
+                    name=item.path.name,
+                    reason=item.source_reason,
+                    evidence='; '.join(item.source_evidence),
+                ) if item.source_evidence else localized_format(
+                    '{name}: {reason}',
+                    name=item.path.name,
+                    reason=item.source_reason,
+                )
                 for item in ambiguous_members
             )
             problems.append(
                 Problem(
                     str(primary_path),
-                    f'The source is uncertain, in order to avoid receiving the wrong download/chat media,{description} Maintain the entire group in place: {details}',
+                    localized_format(
+                        'The source is uncertain, in order to avoid receiving the wrong '
+                        'download/chat media,{description} Maintain the entire group in place: '
+                        '{details}',
+                        description=description,
+                        details=details,
+                    ),
                     "warning",
                 )
             )
@@ -3852,7 +4071,11 @@ def build_groups(
             problems.append(
                 Problem(
                     str(primary_path),
-                    f'It is impossible to confirm the main media is a real photo taken by the camera: {primary.camera_origin_reason}；{description} Keep the entire group in place',
+                    localized_format(
+                        'It is impossible to confirm the main media is a real photo taken by the camera: {primary_camera_origin_reason}; {description} Keep the entire group in place',
+                        primary_camera_origin_reason=primary.camera_origin_reason,
+                        description=description,
+                    ),
                 )
             )
             consumed.update(media_set)
@@ -3860,7 +4083,11 @@ def build_groups(
 
         if primary.timestamp is None or primary.date_source is None:
             problems.append(
-                Problem(str(primary_path), f'{description} The main media lacks a reliable embedded timing, and the entire group remains in place.')
+                Problem(str(primary_path), localized_format(
+                    '{description} The main media lacks a reliable embedded timing, and the entire '
+                    'group remains in place.',
+                    description=description,
+                ))
             )
             consumed.update(media_set)
             return False
@@ -3874,8 +4101,10 @@ def build_groups(
             problems.append(
                 Problem(
                     str(primary_path),
-                    "The sidecar's affiliation is unclear, so to prevent the attachment and main media from being disassembled, keep the whole group in place: "
-                    + " | ".join(ambiguous_sidecars),
+                    localized_format(
+                        "Sidecar ownership is uncertain; keep the whole group in place: {sidecars}",
+                        sidecars=' | '.join(ambiguous_sidecars),
+                    ),
                     "failure",
                 )
             )
@@ -3891,8 +4120,10 @@ def build_groups(
             problems.append(
                 Problem(
                     str(primary_path),
-                    'If you find accompanying files that are not recognized by the script but are clearly related to the name, keep the entire group in place to prevent leftover attachments: '
-                    + ", ".join(path.name for path in unknown),
+                    localized_format(
+                        'Unrecognized companion files may belong to this group; keep the whole group in place: {files}',
+                        files=', '.join(path.name for path in unknown),
+                    ),
                     "failure",
                 )
             )
@@ -3949,14 +4180,24 @@ def build_groups(
                         component.filename_timestamp, component.timestamp
                     )
                     conflict_parts.append(
-                        f'{component.path.name} File name time {format_timestamp(component.filename_timestamp)}, metadata time {format_timestamp(component.timestamp)}, different {difference} seconds'
+                        localized_format(
+                            '{name} File name time {filename_time}, metadata time {metadata_time}, '
+                            'different {difference} seconds',
+                            name=component.path.name,
+                            filename_time=format_timestamp(component.filename_timestamp),
+                            metadata_time=format_timestamp(component.timestamp),
+                            difference=difference,
+                        )
                     )
             if conflict_parts:
                 problems.append(
                     Problem(
                         str(primary_path),
-                        "；".join(conflict_parts)
-                        + f'; exceeding the allowed {TIME_TOLERANCE_SECONDS} Second, the entire group remains in place.',
+                        localized_format(
+                            '{conflicts}; the difference exceeds the {limit}-second tolerance, so the group stays in place.',
+                            conflicts='；'.join(conflict_parts),
+                            limit=TIME_TOLERANCE_SECONDS,
+                        ),
                     )
                 )
                 consumed.update(media_members)
@@ -4121,16 +4362,26 @@ def compare_existing_destination_content(
     """
     try:
         if source.is_symlink():
-            return None, f'The source is a symbolic link, and it is not judged as heavy: {source}'
+            return None, localized_format(
+                'The source is a symbolic link, and it is not judged as heavy: {source}',
+                source=source,
+            )
 
         if destination.is_symlink():
-            return False, f'Target identical names are symbolic links, not treated as duplicate files: {destination}'
+            return False, localized_format(
+                'Target identical names are symbolic links, not treated as duplicate files: '
+                '{destination}',
+                destination=destination,
+            )
 
         if not source.is_file():
-            return None, f'The source is not a regular file, and cannot be judged accurately: {source}'
+            return None, localized_format(
+                'The source is not a regular file, and cannot be judged accurately: {source}',
+                source=source,
+            )
 
         if not destination.is_file():
-            return False, f'Target name is not a regular file: {destination}'
+            return False, localized_format('Target name is not a regular file: {destination}', destination=destination)
 
         # Apple AAE 是 plist；文件整体可能因 render type / timestamp 不同而不同，
         # 但 adjustmentData 相同表示实际编辑参数相同，按语义视为重复。
@@ -4139,7 +4390,10 @@ def compare_existing_destination_content(
                 source_plist = plistlib.loads(source.read_bytes())
                 destination_plist = plistlib.loads(destination.read_bytes())
             except Exception as exc:
-                return None, f'AAE plist parsing failed, cannot safely judge the weight: {exc}'
+                return None, localized_format(
+                    'AAE plist parsing failed, cannot safely judge the weight: {exc}',
+                    exc=exc,
+                )
             source_adjustment = source_plist.get("adjustmentData")
             destination_adjustment = destination_plist.get("adjustmentData")
             if (
@@ -4171,7 +4425,11 @@ def compare_existing_destination_content(
         if source_size != destination_size:
             return (
                 False,
-                f'Different sizes (source {source_size} bytes; target {destination_size} bytes）',
+                localized_format(
+                    'Different sizes (source {source_size} bytes; target {destination_size} bytes)',
+                    source_size=source_size,
+                    destination_size=destination_size,
+                ),
             )
 
         source_hash = sha256_file(source)
@@ -4180,16 +4438,28 @@ def compare_existing_destination_content(
         if source_hash == destination_hash:
             return (
                 True,
-                f'Same size and SHA-256 completely consistent ({source_hash}）',
+                localized_format(
+                    'Same size and SHA-256 completely consistent ({source_hash})',
+                    source_hash=source_hash,
+                ),
             )
 
         return (
             False,
-            f'Same size but different SHA-256 (source {source_hash}; destination {destination_hash}）',
+            localized_format(
+                'Same size but different SHA-256 (source {source_hash}; destination {destination_hash})',
+                source_hash=source_hash,
+                destination_hash=destination_hash,
+            ),
         )
 
     except Exception as exc:
-        return None, f'Content judgment failure: {source} <-> {destination}: {exc}'
+        return None, localized_format(
+            'Content judgment failure: {source} <-> {destination}: {exc}',
+            source=source,
+            destination=destination,
+            exc=exc,
+        )
 
 
 JPEG_METADATA_VARIANT_EXTENSIONS = {".jpg", ".jpeg", ".jfif"}
@@ -4257,21 +4527,38 @@ def compare_jpeg_main_image_without_metadata(
                 )
                 if result.returncode != 0 or not stripped.is_file():
                     detail = result.stderr.strip() or result.stdout.strip() or f"exit={result.returncode}"
-                    return None, f'ExifTool failed to remove metadata: {original}：{detail}'
+                    return None, localized_format(
+                        'ExifTool failed to remove metadata: {original}: {detail}',
+                        original=original,
+                        detail=detail,
+                    )
 
             source_hash = _sha256_uncached(stripped_source)
             destination_hash = _sha256_uncached(stripped_destination)
             if source_hash == destination_hash:
                 return (
                     True,
-                    f'After removing all metadata, the JPEG main picture SHA-256 is completely consistent ({source_hash}）',
+                    localized_format(
+                        'After removing all metadata, the JPEG main picture SHA-256 is completely consistent ({source_hash})',
+                        source_hash=source_hash,
+                    ),
                 )
             return (
                 False,
-                f'The JPEG main image remains different after removing all metadata (source {source_hash}; destination {destination_hash}）',
+                localized_format(
+                    'The JPEG main image remains different after removing all metadata (source {source_hash}; destination {destination_hash})',
+                    source_hash=source_hash,
+                    destination_hash=destination_hash,
+                ),
             )
     except Exception as exc:
-        return None, f'JPEG metadata-variant main image re-encoding failed: {source} <-> {destination}: {exc}'
+        return None, localized_format(
+            'JPEG metadata-variant main image re-encoding failed: {source} <-> {destination}: '
+            '{exc}',
+            source=source,
+            destination=destination,
+            exc=exc,
+        )
 
 
 def _first_metadata_value(metadata: dict, field_name: str) -> Optional[str]:
@@ -4307,7 +4594,7 @@ def jpeg_metadata_variant_summary(source: Path, destination: Path) -> str:
             timeout=60,
         )
         if result.returncode not in (0, 1):
-            return f'Key metadata summary reading failed: {result.stderr.strip()}'
+            return localized_format('Key metadata summary reading failed: {error}', error=result.stderr.strip())
         rows = json.loads(result.stdout)
         if len(rows) < 2:
             return 'Key metadata summary reading is incomplete'
@@ -4320,9 +4607,13 @@ def jpeg_metadata_variant_summary(source: Path, destination: Path) -> str:
                     fields.append(f"{field}={value}")
             return ", ".join(fields) if fields else 'No key fields'
 
-        return f'Source [{describe(rows[0])}];Gallery old version[{describe(rows[1])}]'
+        return localized_format(
+            'Source [{source}];Gallery old version[{gallery_copy}]',
+            source=describe(rows[0]),
+            gallery_copy=describe(rows[1]),
+        )
     except Exception as exc:
-        return f'Key metadata summary reading failed: {exc}'
+        return localized_format('Key metadata summary reading failed: {exc}', exc=exc)
 
 
 def duplicate_target_for_source(source: Path) -> Path:
@@ -4340,7 +4631,11 @@ def duplicate_target_for_source(source: Path) -> Path:
     try:
         relative = source_resolved.relative_to(backup_root)
     except ValueError as exc:
-        raise ValueError(f'The source is not within the Backup Apple, so a duplicate copy path cannot be generated: {source}') from exc
+        raise ValueError(localized_format(
+            'The source is not within the Backup Apple, so a duplicate copy path cannot be '
+            'generated: {source}',
+            source=source,
+        )) from exc
 
     return duplicate_root / relative
 
@@ -4354,7 +4649,11 @@ def format_variant_duplicate_target_for_source(source: Path) -> Path:
     try:
         relative = source_resolved.relative_to(BACKUP_APPLE_ROOT.resolve(strict=False))
     except ValueError as exc:
-        raise ValueError(f'The source is not within the Backup Apple, so the format copy path cannot be generated: {source}') from exc
+        raise ValueError(localized_format(
+            'The source is not within the Backup Apple, so the format copy path cannot be '
+            'generated: {source}',
+            source=source,
+        )) from exc
     return root / relative
 
 
@@ -4436,7 +4735,12 @@ def preflight_group(
                 return (
                     "conflict",
                     canonical_mappings,
-                    f'Two files in the group will be mapped to the same target name: {previous.name} / {source.name}',
+                    localized_format(
+                        'Two files in the group will be mapped to the same target name: '
+                        '{previous_name} / {source_name}',
+                        previous_name=previous.name,
+                        source_name=source.name,
+                    ),
                 )
             names_in_group[key] = source
 
@@ -4446,7 +4750,11 @@ def preflight_group(
 
             if reservation_key(canonical_destination) in reserved_destinations:
                 conflict_details.append(
-                    f'Another set of planned targets has been occupied by this run: {canonical_destination}'
+                    localized_format(
+                        'Another set of planned targets has been occupied by this run: '
+                        '{canonical_destination}',
+                        canonical_destination=canonical_destination,
+                    )
                 )
                 continue
 
@@ -4462,7 +4770,11 @@ def preflight_group(
                 return (
                     "error",
                     canonical_mappings,
-                    f'Cannot safely determine whether a target with the same name is a duplicate file: {detail}',
+                    localized_format(
+                        'Cannot safely determine whether a target with the same name is a '
+                        'duplicate file: {detail}',
+                        detail=detail,
+                    ),
                 )
 
             if not identical:
@@ -4477,18 +4789,37 @@ def preflight_group(
                     return (
                         "error",
                         canonical_mappings,
-                        f'It is not possible to safely determine whether a JPEG with the same name is a metadata variant: {variant_detail}',
+                        localized_format(
+                            'It is not possible to safely determine whether a JPEG with the same '
+                            'name is a metadata variant: {variant_detail}',
+                            variant_detail=variant_detail,
+                        ),
                     )
 
                 if same_main_image:
                     return (
                         "metadata-variant-review",
                         canonical_mappings,
-                        f'{source.name} The JPEG thumbnail of the file with the same name as Gallery is identical, but the metadata is different; the script cannot determine which version of Orientation/GPS/date metadata is correct, so the source and both copies of Gallery are kept in place, without replacing, backing up, migrating, or entering the date subfolder. {variant_detail}；{jpeg_metadata_variant_summary(source, canonical_destination)}',
+                        localized_format(
+                            '{source_name} The JPEG thumbnail of the file with the same name as '
+                            'Gallery is identical, but the metadata is different; the script '
+                            'cannot determine which version of Orientation/GPS/date metadata is '
+                            'correct, so the source and both copies of Gallery are kept in place, '
+                            'without replacing, backing up, migrating, or entering the date '
+                            'subfolder. {variant_detail}; {metadata_summary}',
+                            source_name=source.name,
+                            variant_detail=variant_detail,
+                            metadata_summary=jpeg_metadata_variant_summary(source, canonical_destination),
+                        ),
                     )
 
                 conflict_details.append(
-                    f'The target exists with the same name but different content: {canonical_destination}；{detail}；{variant_detail}'
+                    localized_format(
+                        'The target exists with the same name but different content: {canonical_destination}; {detail}; {variant_detail}',
+                        canonical_destination=canonical_destination,
+                        detail=detail,
+                        variant_detail=variant_detail,
+                    )
                 )
                 continue
 
@@ -4503,7 +4834,11 @@ def preflight_group(
             duplicate_key = reservation_key(duplicate_destination)
             if duplicate_key in reserved_destinations:
                 conflict_details.append(
-                    f'Another set of plans has already occupied the duplicate copy isolation path during this run: {duplicate_destination}'
+                    localized_format(
+                        'Another set of plans has already occupied the duplicate copy isolation '
+                        'path during this run: {duplicate_destination}',
+                        duplicate_destination=duplicate_destination,
+                    )
                 )
                 continue
 
@@ -4515,16 +4850,28 @@ def preflight_group(
                     return (
                         "error",
                         canonical_mappings,
-                        f'Cannot safely determine duplicate files in the isolation directory of a duplicate copy: {duplicate_detail}',
+                        localized_format(
+                            'Cannot safely determine duplicate files in the isolation directory of '
+                            'a duplicate copy: {duplicate_detail}',
+                            duplicate_detail=duplicate_detail,
+                        ),
                     )
 
                 if duplicate_identical:
                     conflict_details.append(
-                        f'An identical file already exists in duplicate quarantine; the script will neither delete the source nor overwrite the destination: {duplicate_destination}；{duplicate_detail}'
+                        localized_format(
+                            'An identical file already exists in duplicate quarantine; the script will neither delete the source nor overwrite the destination: {duplicate_destination}; {duplicate_detail}',
+                            duplicate_destination=duplicate_destination,
+                            duplicate_detail=duplicate_detail,
+                        )
                     )
                 else:
                     conflict_details.append(
-                        f'The duplicate quarantine destination contains a file with the same name but different content; refusing to rename or overwrite: {duplicate_destination}；{duplicate_detail}'
+                        localized_format(
+                            'The duplicate quarantine destination contains a file with the same name but different content; refusing to rename or overwrite: {duplicate_destination}; {duplicate_detail}',
+                            duplicate_destination=duplicate_destination,
+                            duplicate_detail=duplicate_detail,
+                        )
                     )
                 continue
 
@@ -4537,14 +4884,33 @@ def preflight_group(
 
             if source_distance < gallery_distance:
                 duplicate_details.append(
-                    f'{source.name} Completely consistent with the Gallery target byte; the source mtime is closer to the shooting time (source difference {source_distance:.0f}s; Gallery difference {gallery_distance:.0f}s), place the source into Gallery, and move the original Gallery copy into Old Duplicate: {detail}'
+                    localized_format(
+                        '{source_name} Completely consistent with the Gallery target byte; the '
+                        'source mtime is closer to the shooting time (source difference '
+                        '{source_distance:.0f}s; Gallery difference {gallery_distance:.0f}s), '
+                        'place the source into Gallery, and move the original Gallery copy into '
+                        'Old Duplicate: {detail}',
+                        source_name=source.name,
+                        source_distance=source_distance,
+                        gallery_distance=gallery_distance,
+                        detail=detail,
+                    )
                 )
                 # 两阶段事务移动器支持该交换映射：先暂存两边，再提交到目标位置。
                 final_mappings.append((canonical_destination, duplicate_destination))
                 final_mappings.append((source, canonical_destination))
             else:
                 duplicate_details.append(
-                    f'{source.name} Completely consistent with the Gallery target byte; Gallery mtime is closer or equal (source difference {source_distance:.0f}s; Gallery difference {gallery_distance:.0f}s), retain the Gallery version: {detail}'
+                    localized_format(
+                        '{source_name} Completely consistent with the Gallery target byte; Gallery '
+                        'mtime is closer or equal (source difference {source_distance:.0f}s; '
+                        'Gallery difference {gallery_distance:.0f}s), retain the Gallery version: '
+                        '{detail}',
+                        source_name=source.name,
+                        source_distance=source_distance,
+                        gallery_distance=gallery_distance,
+                        detail=detail,
+                    )
                 )
                 final_mappings.append((source, duplicate_destination))
 
@@ -4552,9 +4918,11 @@ def preflight_group(
             return (
                 "mixed-conflict",
                 final_mappings,
-                'Members of the same media group that are confirmed duplicates or other conflict members should remain in their original positions simultaneously; to avoid splitting the group or incorrect reassembly, the entire group should stay in place. '
-                + 'Repeat: ' + " | ".join(duplicate_details)
-                + '; Conflict: ' + " | ".join(conflict_details),
+                localized_format(
+                    'Members of the same media group that are confirmed duplicates or other conflict members should remain in their original positions simultaneously; to avoid splitting the group or incorrect reassembly, the entire group should stay in place. Repeats: {duplicates}; conflicts: {conflicts}',
+                    duplicates=' | '.join(duplicate_details),
+                    conflicts=' | '.join(conflict_details),
+                ),
             )
 
         if conflict_details:
@@ -4572,7 +4940,15 @@ def preflight_group(
                 if not same_path(source, destination) and is_duplicate_destination(destination)
             )
             detail = (
-                f'Confirmed byte-for-byte duplicate; choose the copy whose modification time is closer to the capture time;{duplicate_moves} A file will be moved into {DUPLICATE_ROOT}; there is another in the same group {normal_moves} The missing member has been successfully added to the Gallery.'
+                localized_format(
+                    'Confirmed byte-for-byte duplicate; choose the copy whose modification time is '
+                    'closer to the capture time;{duplicate_moves} A file will be moved into '
+                    '{DUPLICATE_ROOT}; there is another in the same group {normal_moves} The '
+                    'missing member has been successfully added to the Gallery.',
+                    duplicate_moves=duplicate_moves,
+                    DUPLICATE_ROOT=DUPLICATE_ROOT,
+                    normal_moves=normal_moves,
+                )
                 + " | ".join(duplicate_details)
             )
             return "ok-with-duplicates", final_mappings, detail
@@ -4606,7 +4982,11 @@ def preflight_group(
         return (
             True,
             day_mappings,
-            f'There is a conflict in content between the same name in the monthly directory ({month_detail}), change the date sub-directory for the whole group',
+            localized_format(
+                'There is a conflict in content between the same name in the monthly directory '
+                '({month_detail}), change the date sub-directory for the whole group',
+                month_detail=month_detail,
+            ),
             "day-fallback",
         )
 
@@ -4614,7 +4994,12 @@ def preflight_group(
         return (
             True,
             day_mappings,
-            f'There is a conflict in content between the same name in the monthly directory ({month_detail}); After date directory verification: {day_detail}',
+            localized_format(
+                'There is a conflict in content between the same name in the monthly directory '
+                '({month_detail}); After date directory verification: {day_detail}',
+                month_detail=month_detail,
+                day_detail=day_detail,
+            ),
             "day-with-duplicates",
         )
 
@@ -4630,7 +5015,14 @@ def preflight_group(
     return (
         False,
         day_mappings,
-        f'There are conflicts in content between the monthly directory and the date subdirectories, with the same name but different contents; do not rename or overwrite, and keep the entire group in place. Monthly directory: {month_detail}; Date directory: {day_detail}',
+        localized_format(
+            'There are conflicts in content between the monthly directory and the date '
+            'subdirectories, with the same name but different contents; do not rename or '
+            'overwrite, and keep the entire group in place. Monthly directory: {month_detail}; '
+            'Date directory: {day_detail}',
+            month_detail=month_detail,
+            day_detail=day_detail,
+        ),
         None,
     )
 
@@ -4707,7 +5099,12 @@ def print_skip_problem_entries(skips: Sequence[Problem]) -> None:
 
     print()
     print(
-        f'Left in place or skipped: {len(entries)} Group/item ({grouped_file_records} file records)'
+        localized_format(
+            'Left in place or skipped: {entries_count} Group/item ({grouped_file_records} file '
+            'records)',
+            entries_count=len(entries),
+            grouped_file_records=grouped_file_records,
+        )
     )
 
     if not entries:
@@ -4718,7 +5115,7 @@ def print_skip_problem_entries(skips: Sequence[Problem]) -> None:
         print(f"  {i}. {entry.primary.path}")
         for companion in entry.companions:
             print(f"     └─ sidecar：{companion.path}")
-        print(f'     Reason: {entry.primary.reason}')
+        print(localized_format('     Reason: {reason}', reason=entry.primary.reason))
 
 
 def archive_completed_source_directory(source_root: Path) -> Path:
@@ -4729,17 +5126,29 @@ def archive_completed_source_directory(source_root: Path) -> Path:
 
     if source.parent != stage0:
         raise ValueError(
-            f'The completion of directory archiving only allows direct subdirectories of stage 0 to be organized: {source}; Expected parent directory: {stage0}'
+            localized_format(
+                'The completion of directory archiving only allows direct subdirectories of stage '
+                '0 to be organized: {source}; Expected parent directory: {stage0}',
+                source=source,
+                stage0=stage0,
+            )
         )
 
     destination = completed / source.name
     if destination.exists():
-        raise FileExistsError(f'The stage 1 destination already exists; refusing to overwrite: {destination}')
+        raise FileExistsError(localized_format(
+            'The stage 1 destination already exists; refusing to overwrite: {destination}',
+            destination=destination,
+        ))
 
     completed.mkdir(parents=True, exist_ok=True)
     shutil.move(str(source), str(destination))
     if source.exists() or not destination.is_dir():
-        raise RuntimeError(f'Verification failed after source directory archiving: {source} -> {destination}')
+        raise RuntimeError(localized_format(
+            'Verification failed after source directory archiving: {source} -> {destination}',
+            source=source,
+            destination=destination,
+        ))
     return destination
 
 
@@ -4760,21 +5169,26 @@ def run_organizer(args: argparse.Namespace) -> int:
 
     if not source_root.exists():
         print(
-            f'Error: Source directory does not exist: {source_root}',
+            localized_format('Error: Source directory does not exist: {source_root}', source_root=source_root),
             file=sys.stderr,
         )
         return 2
 
     if not source_root.is_dir():
         print(
-            f'Error: The source path is not a directory: {source_root}',
+            localized_format('Error: The source path is not a directory: {source_root}', source_root=source_root),
             file=sys.stderr,
         )
         return 2
 
     if not path_is_within(source_root, backup_root):
         print(
-            f'Error: Source directory must be within {BACKUP_APPLE_ROOT}.\nCurrent source: {source_root}',
+            localized_format(
+                'Error: Source directory must be within {BACKUP_APPLE_ROOT}.\nCurrent source: '
+                '{source_root}',
+                BACKUP_APPLE_ROOT=BACKUP_APPLE_ROOT,
+                source_root=source_root,
+            ),
             file=sys.stderr,
         )
         return 2
@@ -4783,24 +5197,26 @@ def run_organizer(args: argparse.Namespace) -> int:
 
     print("=" * 78)
     print("Gallery Organizer")
-    print(f'Script version: {SCRIPT_VERSION}')
-    print(f'Source directory: {source_root}')
-    print(f'Fixed destination: {destination_root}')
-    print(f'Duplicate isolation: {duplicate_root}')
-    print(f'Alternate formats of the same image: {FORMAT_VARIANT_DUPLICATE_ROOT}')
+    print(localized_format('Script version: {SCRIPT_VERSION}', SCRIPT_VERSION=SCRIPT_VERSION))
+    print(localized_format('Source directory: {source_root}', source_root=source_root))
+    print(localized_format('Fixed destination: {destination_root}', destination_root=destination_root))
+    print(localized_format('Duplicate isolation: {duplicate_root}', duplicate_root=duplicate_root))
+    print(localized_format(
+        'Alternate formats of the same image: {FORMAT_VARIANT_DUPLICATE_ROOT}',
+        FORMAT_VARIANT_DUPLICATE_ROOT=FORMAT_VARIANT_DUPLICATE_ROOT,
+    ))
     print(localized_format(
         "After apply, archive a completed batch: {stage0}/name -> {stage1}/name",
         stage0=SOURCE_STAGE0_ROOT, stage1=COMPLETED_SOURCE_ROOT,
     ))
-    print(f'Android time tolerance: <= {TIME_TOLERANCE_SECONDS} seconds')
-    print(
-        'Mode: '
-        + (
-            'Actual movement --apply'
-            if args.apply
-            else 'DRY RUN (preview only, no movement)'
-        )
-    )
+    print(localized_format(
+        'Android time tolerance: <= {TIME_TOLERANCE_SECONDS} seconds',
+        TIME_TOLERANCE_SECONDS=TIME_TOLERANCE_SECONDS,
+    ))
+    print(localized_format(
+        'Mode: {mode}',
+        mode='Actual movement --apply' if args.apply else 'DRY RUN (preview only, no movement)',
+    ))
     print('Destination layout: YYYY/YYYY-MM; check size and SHA-256 for identical names, then use a YYYY-MM-DD subfolder for a same-name content conflict.')
     print('Exact duplicates: keep the copy whose modification time is closer to the trusted capture time; move the other to duplicate quarantine. Missing sidecars may still be added to the library.')
     print('Filenames: preserve original names; do not rename a file solely because of a collision.')
@@ -4816,13 +5232,21 @@ def run_organizer(args: argparse.Namespace) -> int:
     print('MVIMG: recognize Android Motion Photo names without splitting or modifying the original file.')
     print('Apple HEIC/JPG/DNG: once confirmed as the same image, prefer the camera original for the library and quarantine other formats.')
     print('Sidecar: Parse XMP/AAE/DOP/PP3 content; IMG_O####.AAE will be cross-checked after unifying the explicit time zone/OffsetTime/same stem XMP time zone with Apple adjustment UTC and IMG_####; THM/LRV will be assigned based on metadata/duration as auxiliary; If uncertain, leave the whole group unchanged.')
-    print(f"Custom filename: After being recognized and categorized, retain existing Finder tags and add '{CUSTOM_FILENAME_FINDER_TAG}'")
+    print(localized_format(
+        'Custom filename: After being recognized and categorized, retain existing Finder tags and '
+        "add '{CUSTOM_FILENAME_FINDER_TAG}'",
+        CUSTOM_FILENAME_FINDER_TAG=CUSTOM_FILENAME_FINDER_TAG,
+    ))
     print('Source three states: CLEAN / AMBIGUOUS / EXCLUDED; Strong negative source evidence is prioritized over reliable EXIF')
     print('Source detection: WhereFroms/quarantine + Download/Chat directory + Screenshot/Screen Recording File name and metadata')
     print('quarantine: Photos/unknown quarantine is considered neutral in itself; only browsers/chat agents or online sources constitute strong negative')
     print('xattr: The source detection will list the attribute names only once, and will be read only when there are actual WhereFroms/quarantine.')
     print('Sidecar/companion files: directory/name/stem, complete filename text matching, ContentIdentifier/UUID, same stem XMP, target→sidecar, pre-built indexes for unknown attachments to avoid repeated scanning of sidecar×media.')
-    print(f'SHA-256: Full-file hashing with persistent cache: {HASH_CACHE_DB} (automatically invalidated when the file changes)')
+    print(localized_format(
+        'SHA-256: Full-file hashing with persistent cache: {HASH_CACHE_DB} (automatically '
+        'invalidated when the file changes)',
+        HASH_CACHE_DB=HASH_CACHE_DB,
+    ))
     print('Progress display: interactive Terminal fixed bottom-line refresh; log recording line by line when redirecting; affects terminal output only')
     print('Screenshots, screen recordings, and web downloads: leave in place. Moderate negative origin evidence also requires manual review.')
     print("=" * 78)
@@ -4850,8 +5274,8 @@ def run_organizer(args: argparse.Namespace) -> int:
         if classify(path) == "sidecar"
     ]
 
-    print(f'Primary media found: {len(media_paths)}')
-    print(f'Sidecar files found: {len(sidecar_paths)}')
+    print(localized_format('Primary media found: {media_paths_count}', media_paths_count=len(media_paths)))
+    print(localized_format('Sidecar files found: {sidecar_paths_count}', sidecar_paths_count=len(sidecar_paths)))
     print()
 
     stage_started = time.perf_counter()
@@ -4878,14 +5302,21 @@ def run_organizer(args: argparse.Namespace) -> int:
                 'Metadata',
                 metadata_done,
                 metadata_total,
-                f'No. {batch_no}/{len(metadata_batches)} Batch completed; successful reading {len(batch_map)}/{len(batch)}',
+                localized_format(
+                    'No. {batch_no}/{metadata_batches_count} Batch completed; successful reading '
+                    '{batch_map_count}/{batch_count}',
+                    batch_no=batch_no,
+                    metadata_batches_count=len(metadata_batches),
+                    batch_map_count=len(batch_map),
+                    batch_count=len(batch),
+                ),
             )
 
         except Exception as exc:
-            reason = f'ExifTool batch reading failed: {exc}'
+            reason = localized_format('ExifTool batch reading failed: {exc}', exc=exc)
 
             print(
-                f'[Failure] {reason}',
+                localized_format('[Failure] {reason}', reason=reason),
                 file=sys.stderr,
             )
 
@@ -4902,7 +5333,12 @@ def run_organizer(args: argparse.Namespace) -> int:
                 'Metadata',
                 metadata_done,
                 metadata_total,
-                f'No. {batch_no}/{len(metadata_batches)} Batch failed, recorded for manual inspection.',
+                localized_format(
+                    'No. {batch_no}/{metadata_batches_count} Batch failed, recorded for manual '
+                    'inspection.',
+                    batch_no=batch_no,
+                    metadata_batches_count=len(metadata_batches),
+                ),
             )
 
     finish_stage_progress()
@@ -4948,14 +5384,23 @@ def run_organizer(args: argparse.Namespace) -> int:
     stage_timings['Media group recovery/association'] = time.perf_counter() - stage_started
 
     print(
-        f'Identify Live/Motion Photo static images + video pairing: {len(still_to_video)} groups'
+        localized_format(
+            'Identify Live/Motion Photo static images + video pairing: {still_to_video_count} '
+            'groups',
+            still_to_video_count=len(still_to_video),
+        )
     )
     print(
-        f'Confirm Apple multi-format photo association: {confirmed_variant_pairs} confirmed; uncertain: {ambiguous_variant_pairs} pairs'
+        localized_format(
+            'Confirm Apple multi-format photo association: {confirmed_variant_pairs} confirmed; '
+            'uncertain: {ambiguous_variant_pairs} pairs',
+            confirmed_variant_pairs=confirmed_variant_pairs,
+            ambiguous_variant_pairs=ambiguous_variant_pairs,
+        )
     )
 
     print(
-        f'Media groups that can enter the sorting process: {len(groups)}'
+        localized_format('Media groups that can enter the sorting process: {groups_count}', groups_count=len(groups))
     )
 
     print()
@@ -4986,7 +5431,7 @@ def run_organizer(args: argparse.Namespace) -> int:
         print("-" * 78)
         print_stage_progress('Organization progress', index, len(groups), group.description)
         print(
-            f'Date source: {group.date_source}'
+            localized_format('Date source: {group_date_source}', group_date_source=group.date_source)
         )
 
         ok, mappings, error, placement = preflight_group(
@@ -4998,12 +5443,18 @@ def run_organizer(args: argparse.Namespace) -> int:
 
             if placement == "metadata-variant-review":
                 stats["metadata_variant_review_groups"] += 1
-                print(f'[Same image metadata variant, requires manual confirmation] {reason}')
+                print(localized_format(
+                    '[Same image metadata variant, requires manual confirmation] {reason}',
+                    reason=reason,
+                ))
                 problems.append(Problem(str(group.primary), reason, "warning"))
                 continue
 
             if placement == "duplicate-check-error":
-                print(f'[Judgment failed, skip the entire group] {reason}', file=sys.stderr)
+                print(localized_format(
+                    '[Judgment failed, skip the entire group] {reason}',
+                    reason=reason,
+                ), file=sys.stderr)
                 problems.append(
                     Problem(
                         str(group.primary),
@@ -5015,12 +5466,12 @@ def run_organizer(args: argparse.Namespace) -> int:
 
             if placement == "duplicate-mixed-conflict":
                 stats["conflicts"] += 1
-                print(f'[Repeated/conflict mixed, skipping the entire group] {reason}')
+                print(localized_format('[Repeated/conflict mixed, skipping the entire group] {reason}', reason=reason))
                 problems.append(Problem(str(group.primary), reason, "failure"))
                 continue
 
             stats["conflicts"] += 1
-            print(f'[Skip the entire group] {reason}')
+            print(localized_format('[Skip the entire group] {reason}', reason=reason))
             problems.append(
                 Problem(
                     str(group.primary),
@@ -5041,9 +5492,9 @@ def run_organizer(args: argparse.Namespace) -> int:
             stats["duplicate_files"] += len(duplicate_mappings)
 
         if error and placement == "day-fallback":
-            print(f'[Heavy-duty backup] {error}')
+            print(localized_format('[Heavy-duty backup] {error}', error=error))
         elif error and placement in ("month-with-duplicates", "day-with-duplicates"):
-            print(f'[Confirm completely repeated] {error}')
+            print(localized_format('[Confirm completely repeated] {error}', error=error))
 
         # Finder 标签也先做只读预检。若已有标签 plist 无法安全解析，
         # 宁可整组不动，避免覆盖用户原有 Finder 标签。
@@ -5051,14 +5502,19 @@ def run_organizer(args: argparse.Namespace) -> int:
             tag_plan = build_custom_filename_tag_plan(mappings, infos)
         except Exception as exc:
             stats["tag_failures"] += 1
-            reason = f'Custom file name Finder tag pre-check failed: {exc}'
-            print(f'[Skip the entire group] {reason}', file=sys.stderr)
+            reason = localized_format('Custom file name Finder tag pre-check failed: {exc}', exc=exc)
+            print(localized_format('[Skip the entire group] {reason}', reason=reason), file=sys.stderr)
             problems.append(Problem(str(group.primary), reason, "failure"))
             continue
 
         for item in tag_plan:
             state = 'Already existed' if item.already_had_tag else 'Will be added'
-            print(f'[Finder tags {state}] {item.source} -> {CUSTOM_FILENAME_FINDER_TAG}')
+            print(localized_format(
+                '[Finder tags {state}] {item_source} -> {CUSTOM_FILENAME_FINDER_TAG}',
+                state=state,
+                item_source=item.source,
+                CUSTOM_FILENAME_FINDER_TAG=CUSTOM_FILENAME_FINDER_TAG,
+            ))
 
         for source, destination in mappings:
             if not same_path(source, destination):
@@ -5074,7 +5530,10 @@ def run_organizer(args: argparse.Namespace) -> int:
         if already_in_place:
             stats["already_correct"] += 1
             print(
-                f'[Already in the correct position] {(mappings[0][1].parent if mappings else target_dir(group.year, group.month))}'
+                localized_format(
+                    '[Already in the correct position] {destination}',
+                    destination=mappings[0][1].parent if mappings else target_dir(group.year, group.month),
+                )
             )
 
             if not args.apply or not tag_plan:
@@ -5084,12 +5543,20 @@ def run_organizer(args: argparse.Namespace) -> int:
             if tag_ok:
                 stats["tagged_custom_files"] += added_count
                 for item in tag_plan:
-                    print(f'[Finder tag successful] {item.target}: {CUSTOM_FILENAME_FINDER_TAG}')
+                    print(localized_format(
+                        '[Finder tag successful] {item_target}: {CUSTOM_FILENAME_FINDER_TAG}',
+                        item_target=item.target,
+                        CUSTOM_FILENAME_FINDER_TAG=CUSTOM_FILENAME_FINDER_TAG,
+                    ))
                 continue
 
             stats["tag_failures"] += 1
             reason = tag_error or 'Unknown Finder tag write error'
-            print(f'[Finder tag failed] {group.primary}: {reason}', file=sys.stderr)
+            print(localized_format(
+                '[Finder tag failed] {group_primary}: {reason}',
+                group_primary=group.primary,
+                reason=reason,
+            ), file=sys.stderr)
             problems.append(Problem(str(group.primary), reason, "failure"))
             continue
 
@@ -5098,15 +5565,18 @@ def run_organizer(args: argparse.Namespace) -> int:
         if not args.apply:
             for source, destination in mappings:
                 if same_path(source, destination):
-                    print(f'[Correct] {source}')
+                    print(localized_format('[Correct] {source}', source=source))
                 elif is_format_variant_destination(destination):
-                    print(f'[Preview of non-preferred format from the same image] {source}')
+                    print(localized_format(
+                        '[Preview of non-preferred format from the same image] {source}',
+                        source=source,
+                    ))
                     print(f"    -> {destination}")
                 elif is_duplicate_destination(destination):
-                    print(f'[Duplicate copy preview] {source}')
+                    print(localized_format('[Duplicate copy preview] {source}', source=source))
                     print(f"    -> {destination}")
                 else:
-                    print(f'[Preview] {source}')
+                    print(localized_format('[Preview] {source}', source=source))
                     print(f"    -> {destination}")
             continue
 
@@ -5115,7 +5585,11 @@ def run_organizer(args: argparse.Namespace) -> int:
         if not success:
             stats["move_failures"] += 1
             reason = move_error or 'Unknown move error'
-            print(f'[Failure] {group.primary}: {reason}', file=sys.stderr)
+            print(localized_format(
+                '[Failure] {group_primary}: {reason}',
+                group_primary=group.primary,
+                reason=reason,
+            ), file=sys.stderr)
             problems.append(Problem(str(group.primary), reason, "failure"))
             continue
 
@@ -5129,11 +5603,21 @@ def run_organizer(args: argparse.Namespace) -> int:
 
             reason = tag_error or 'Unknown Finder tag write error'
             if rollback_error:
-                reason += f'; move rollback failed: {rollback_error}'
+                reason = localized_format(
+                    '{reason}; move rollback failed: {error}',
+                    reason=reason, error=rollback_error,
+                )
             if restore_error:
-                reason += f'; The original path Finder tag restoration failed: {restore_error}'
+                reason = localized_format(
+                    '{reason}; Finder tag restoration failed at the original path: {error}',
+                    reason=reason, error=restore_error,
+                )
 
-            print(f'[Transaction failed and rolled back] {group.primary}: {reason}', file=sys.stderr)
+            print(localized_format(
+                '[Transaction failed and rolled back] {group_primary}: {reason}',
+                group_primary=group.primary,
+                reason=reason,
+            ), file=sys.stderr)
             problems.append(Problem(str(group.primary), reason, "failure"))
             continue
 
@@ -5148,19 +5632,27 @@ def run_organizer(args: argparse.Namespace) -> int:
 
         for source, destination in mappings:
             if same_path(source, destination):
-                print(f'[Originally correct] {source}')
+                print(localized_format('[Originally correct] {source}', source=source))
             elif is_format_variant_destination(destination):
-                print(f'[The format not listed as the first choice in the same image has been isolated] {source}')
+                print(localized_format(
+                    '[The format not listed as the first choice in the same image has been '
+                    'isolated] {source}',
+                    source=source,
+                ))
                 print(f"    -> {destination}")
             elif is_duplicate_destination(destination):
-                print(f'[Duplicate copy has been isolated] {source}')
+                print(localized_format('[Duplicate copy has been isolated] {source}', source=source))
                 print(f"    -> {destination}")
             else:
-                print(f'[Success] {source}')
+                print(localized_format('[Success] {source}', source=source))
                 print(f"    -> {destination}")
 
         for item in tag_plan:
-            print(f'[Finder tag successful] {item.target}: {CUSTOM_FILENAME_FINDER_TAG}')
+            print(localized_format(
+                '[Finder tag successful] {item_target}: {CUSTOM_FILENAME_FINDER_TAG}',
+                item_target=item.target,
+                CUSTOM_FILENAME_FINDER_TAG=CUSTOM_FILENAME_FINDER_TAG,
+            ))
 
     finish_stage_progress()
     stage_timings['Destination preflight/duplicate check/move'] = time.perf_counter() - stage_started
@@ -5169,27 +5661,54 @@ def run_organizer(args: argparse.Namespace) -> int:
     print("=" * 78)
     print('Run complete')
     print("=" * 78)
-    print(f'Source directory:             {source_root}')
-    print(f'Fixed target:             {destination_root}')
-    print(f'Duplicate copy isolation:         {duplicate_root}')
-    print(f"Media group that can be organized:         {stats['groups']}")
-    print(f"Media groups to move:       {stats['planned']}")
+    print(localized_format('Source directory:             {source_root}', source_root=source_root))
+    print(localized_format('Fixed target: {destination_root}', destination_root=destination_root))
+    print(localized_format('Duplicate copy isolation: {duplicate_root}', duplicate_root=duplicate_root))
+    print(localized_format('Media group that can be organized: {groups_count}', groups_count=stats['groups']))
+    print(localized_format('Media groups to move: {planned_count}', planned_count=stats['planned']))
 
     if args.apply:
-        print(f"Media groups moved successfully:       {stats['moved_groups']}")
-        print(f"Successfully moved file:         {stats['moved_files']}")
-        print(f"Duplicate files have been isolated:       {stats['moved_duplicate_files']}")
+        print(localized_format(
+            'Media groups moved successfully: {moved_groups_count}',
+            moved_groups_count=stats['moved_groups'],
+        ))
+        print(localized_format('Successfully moved file: {moved_files_count}', moved_files_count=stats['moved_files']))
+        print(localized_format(
+            'Duplicate files have been isolated: {moved_duplicate_files_count}',
+            moved_duplicate_files_count=stats['moved_duplicate_files'],
+        ))
 
-    print(f"Already in the correct destination:     {stats['already_correct']}")
-    print(f"Detected completely duplicate media groups: {stats['duplicate_groups']}")
-    print(f"Plan to isolate duplicate files:     {stats['duplicate_files']}")
-    print(f"Same-image metadata variants requiring review: {stats['metadata_variant_review_groups']}")
-    print(f"Skip entire group with target conflict:     {stats['conflicts']}")
+    print(localized_format(
+        'Already in the correct destination: {already_correct_count}',
+        already_correct_count=stats['already_correct'],
+    ))
+    print(localized_format(
+        'Detected completely duplicate media groups: {duplicate_groups_count}',
+        duplicate_groups_count=stats['duplicate_groups'],
+    ))
+    print(localized_format(
+        'Plan to isolate duplicate files: {duplicate_files_count}',
+        duplicate_files_count=stats['duplicate_files'],
+    ))
+    print(localized_format(
+        'Same-image metadata variants requiring review: {metadata_variant_review_groups_count}',
+        metadata_variant_review_groups_count=stats['metadata_variant_review_groups'],
+    ))
+    print(localized_format(
+        'Skip entire group with target conflict: {conflicts_count}',
+        conflicts_count=stats['conflicts'],
+    ))
 
     if args.apply:
-        print(f"Media groups whose move failed:       {stats['move_failures']}")
-        print(f"Added custom filename tags: {stats['tagged_custom_files']}")
-        print(f"Finder tag failed:      {stats['tag_failures']}")
+        print(localized_format(
+            'Media groups whose move failed: {move_failures_count}',
+            move_failures_count=stats['move_failures'],
+        ))
+        print(localized_format(
+            'Added custom filename tags: {tagged_custom_files_count}',
+            tagged_custom_files_count=stats['tagged_custom_files'],
+        ))
+        print(localized_format('Finder tag failed: {tag_failures_count}', tag_failures_count=stats['tag_failures']))
 
     print()
     print('Stage durations: ')
@@ -5206,10 +5725,19 @@ def run_organizer(args: argparse.Namespace) -> int:
     ):
         if label in stage_timings:
             print(f"  {label:<22} {stage_timings[label]:8.2f} s")
-    print(
-        f'  SHA-256 cache             hit {_SHA256_CACHE.hits} / Not hit {_SHA256_CACHE.misses}'
-        + (f' / Cache error {_SHA256_CACHE.errors}' if _SHA256_CACHE.errors else "")
-    )
+    if _SHA256_CACHE.errors:
+        print(localized_format(
+            '  SHA-256 cache hit {hits} / miss {misses} / errors {errors}',
+            hits=_SHA256_CACHE.hits,
+            misses=_SHA256_CACHE.misses,
+            errors=_SHA256_CACHE.errors,
+        ))
+    else:
+        print(localized_format(
+            '  SHA-256 cache hit {hits} / miss {misses}',
+            hits=_SHA256_CACHE.hits,
+            misses=_SHA256_CACHE.misses,
+        ))
 
     if args.apply:
         existing_failures = [
@@ -5224,12 +5752,16 @@ def run_organizer(args: argparse.Namespace) -> int:
             try:
                 archived_source = archive_completed_source_directory(source_root)
                 print()
-                print(f'[Stage archiving successful] {source_root}')
+                print(localized_format('[Stage archiving successful] {source_root}', source_root=source_root))
                 print(f"    -> {archived_source}")
             except Exception as exc:
-                reason = f'apply has been completed, but the source directory migration to the consolidation stage 1 failed: {exc}'
+                reason = localized_format(
+                    'apply has been completed, but the source directory migration to the '
+                    'consolidation stage 1 failed: {exc}',
+                    exc=exc,
+                )
                 problems.append(Problem(str(source_root), reason, "failure"))
-                print(f'[Phase archiving failed] {reason}', file=sys.stderr)
+                print(localized_format('[Phase archiving failed] {reason}', reason=reason), file=sys.stderr)
 
     failures = [
         problem
@@ -5251,7 +5783,7 @@ def run_organizer(args: argparse.Namespace) -> int:
 
     print()
     print(
-        f'Failure / Requires manual inspection: {len(failures)}'
+        localized_format('Failure / Requires manual inspection: {failures_count}', failures_count=len(failures))
     )
 
     if failures:
@@ -5263,7 +5795,7 @@ def run_organizer(args: argparse.Namespace) -> int:
                 f"  {i}. {problem.path}"
             )
             print(
-                f'     Reason: {problem.reason}'
+                localized_format('     Reason: {problem_reason}', problem_reason=problem.reason)
             )
     else:
         print('  None')
@@ -5271,11 +5803,11 @@ def run_organizer(args: argparse.Namespace) -> int:
     print_skip_problem_entries(skips)
 
     print()
-    print(f'Hint / Relationship uncertain: {len(warnings)}')
+    print(localized_format('Hint / Relationship uncertain: {warnings_count}', warnings_count=len(warnings)))
     if warnings:
         for i, problem in enumerate(warnings, start=1):
             print(f"  {i}. {problem.path}")
-            print(f'     Reason: {problem.reason}')
+            print(localized_format('     Reason: {problem_reason}', problem_reason=problem.reason))
     else:
         print('  None')
 
@@ -5326,11 +5858,14 @@ def validate_tui_source(value: str) -> Tuple[Optional[Path], Optional[str]]:
     backup_root = BACKUP_APPLE_ROOT.resolve(strict=False)
 
     if not source_root.exists():
-        return None, f'The source directory does not exist: {source_root}'
+        return None, localized_format('The source directory does not exist: {source_root}', source_root=source_root)
     if not source_root.is_dir():
-        return None, f'The source path is not a directory: {source_root}'
+        return None, localized_format('The source path is not a directory: {source_root}', source_root=source_root)
     if not path_is_within(source_root, backup_root):
-        return None, f'Source directory must be within {BACKUP_APPLE_ROOT}.'
+        return None, localized_format(
+            'Source directory must be within {BACKUP_APPLE_ROOT}.',
+            BACKUP_APPLE_ROOT=BACKUP_APPLE_ROOT,
+        )
 
     return source_root, None
 
@@ -5360,9 +5895,9 @@ def read_tui_key() -> str:
 def print_tui_header() -> None:
     print("=" * 72)
     print("Gallery Organizer · TUI")
-    print(f'Version: {SCRIPT_VERSION}')
-    print(f'Fixed destination: {DESTINATION_ROOT}')
-    print(f'Duplicate copies: {DUPLICATE_ROOT}')
+    print(localized_format('Version: {SCRIPT_VERSION}', SCRIPT_VERSION=SCRIPT_VERSION))
+    print(localized_format('Fixed destination: {DESTINATION_ROOT}', DESTINATION_ROOT=DESTINATION_ROOT))
+    print(localized_format('Duplicate copies: {DUPLICATE_ROOT}', DUPLICATE_ROOT=DUPLICATE_ROOT))
     print("=" * 72)
 
 
@@ -5382,7 +5917,7 @@ def tui_main(batch_size: int) -> int:
         source_root, error = validate_tui_source(raw_folder)
         if error:
             print()
-            print(f'Error: {error}')
+            print(localized_format('Error: {error}', error=error))
             print('Press any key to re-enter; Ctrl-C to exit.', end="", flush=True)
             try:
                 read_tui_key()
@@ -5396,7 +5931,7 @@ def tui_main(batch_size: int) -> int:
         clear_terminal()
         print_tui_header()
         print()
-        print(f'Source directory: {source_root}')
+        print(localized_format('Source directory: {source_root}', source_root=source_root))
         print()
         print('Please select the running mode: ')
         print('  [Default] DRY RUN — Press any key except A')

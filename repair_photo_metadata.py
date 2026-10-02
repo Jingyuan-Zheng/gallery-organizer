@@ -115,7 +115,7 @@ from pathlib import Path
 from typing import Dict, Iterator, List, Optional, Sequence, Tuple
 
 
-from terminal_language import LocalizedArgumentParser, install_terminal_language, localized_input
+from terminal_language import LocalizedArgumentParser, install_terminal_language, localized_input, localized_format
 
 from gallery_config import (
     LANGUAGE,
@@ -283,9 +283,9 @@ def require_tools() -> str:
     if not exiftool:
         raise RuntimeError('ExifTool not found. Installation: brew install exiftool')
     if not XATTR_TOOL.exists():
-        raise RuntimeError(f'Cannot find native xattr for macOS: {XATTR_TOOL}')
+        raise RuntimeError(localized_format('Cannot find native xattr for macOS: {XATTR_TOOL}', XATTR_TOOL=XATTR_TOOL))
     if not DITTO_TOOL.exists():
-        raise RuntimeError(f'Cannot find native ditto for macOS: {DITTO_TOOL}')
+        raise RuntimeError(localized_format('Cannot find native ditto for macOS: {DITTO_TOOL}', DITTO_TOOL=DITTO_TOOL))
     return exiftool
 
 
@@ -467,7 +467,7 @@ def read_metadata_batch(exiftool: str, paths: Sequence[Path]) -> Dict[str, dict]
     try:
         rows = json.loads(cp.stdout)
     except json.JSONDecodeError as exc:
-        raise RuntimeError(f'Unable to parse ExifTool JSON: {exc}') from exc
+        raise RuntimeError(localized_format('Unable to parse ExifTool JSON: {exc}', exc=exc)) from exc
     result: Dict[str, dict] = {}
     for row in rows:
         src = row.get("SourceFile")
@@ -557,7 +557,12 @@ def decide_repair(e: Evidence, *, trust_compact_filename_time: bool = False) -> 
         if diff <= RULE_A_MTIME_TOLERANCE_SECONDS:
             return Decision(
                 True, rule_name("A", e, "filename-mtime"), e.filename_time,
-                f'Standard {e.camera_prefix} The filename is exactly 08:00 minutes behind the filesystem mtime absolute time. {diff:.0f} seconds',
+                localized_format(
+                    'Standard {e_camera_prefix} The filename is exactly 08:00 minutes behind the '
+                    'filesystem mtime absolute time. {diff:.0f} seconds',
+                    e_camera_prefix=e.camera_prefix,
+                    diff=diff,
+                ),
             )
 
     # B: Huawei + GPS + ModifyDate cross-check, available to IMG and PANO.
@@ -568,7 +573,13 @@ def decide_repair(e: Evidence, *, trust_compact_filename_time: bool = False) -> 
         if gps_diff <= RULE_B_GPS_TOLERANCE_SECONDS and modify_diff <= RULE_B_MODIFY_TOLERANCE_SECONDS:
             return Decision(
                 True, rule_name("B", e, "huawei-gps-modify"), e.filename_time,
-                f'Huawei {e.camera_prefix}: GPS is different from the filename {gps_diff:.0f} seconds; ModifyDate difference {modify_diff:.0f} seconds',
+                localized_format(
+                    'Huawei {e_camera_prefix}: GPS is different from the filename {gps_diff:.0f} '
+                    'seconds; ModifyDate difference {modify_diff:.0f} seconds',
+                    e_camera_prefix=e.camera_prefix,
+                    gps_diff=gps_diff,
+                    modify_diff=modify_diff,
+                ),
             )
 
     # C: IMG _mh only.
@@ -579,7 +590,11 @@ def decide_repair(e: Evidence, *, trust_compact_filename_time: bool = False) -> 
             if 0 < delay <= RULE_C_MAX_EDIT_DELAY_SECONDS and mh_edit_time.date() == e.filename_time.date():
                 return Decision(
                     True, "C-img-mh-edited-derivative", e.filename_time,
-                    f"_mh suffix indicates the time for editing/saving later. {mh_edit_time:%Y-%m-%d %H:%M:%S}; filmed later than the filename's shooting time {delay:.0f} Seconds and still on the same day",
+                    localized_format(
+                        'The _mh suffix indicates an edit or save at {mh_edit_time:%Y-%m-%d %H:%M:%S}, {delay:.0f} seconds after the capture time in the filename on the same day.',
+                        mh_edit_time=mh_edit_time,
+                        delay=delay,
+                    ),
                 )
 
     # D: ModifyDate confirms filename, no GPS present.
@@ -588,7 +603,12 @@ def decide_repair(e: Evidence, *, trust_compact_filename_time: bool = False) -> 
         if modify_diff <= RULE_D_MODIFY_TOLERANCE_SECONDS:
             return Decision(
                 True, rule_name("D", e, "filename-modify"), e.filename_time,
-                f'No GPS conflict; embedded ModifyDate with {e.camera_prefix} The file names are different. {modify_diff:.0f} seconds',
+                localized_format(
+                    'No GPS conflict; embedded ModifyDate with {e_camera_prefix} The file names '
+                    'are different. {modify_diff:.0f} seconds',
+                    e_camera_prefix=e.camera_prefix,
+                    modify_diff=modify_diff,
+                ),
             )
 
     # E: BirthTime absolute instant confirms filename.
@@ -598,29 +618,48 @@ def decide_repair(e: Evidence, *, trust_compact_filename_time: bool = False) -> 
         if birth_diff <= RULE_E_BIRTHTIME_TOLERANCE_SECONDS:
             return Decision(
                 True, rule_name("E", e, "filename-birthtime"), e.filename_time,
-                f'{e.camera_prefix} The filename is 08:00 +08:00 hours away from the filesystem BirthTime absolute time. {birth_diff:.0f} seconds',
+                localized_format(
+                    '{e_camera_prefix} The filename is 08:00 +08:00 hours away from the filesystem '
+                    'BirthTime absolute time. {birth_diff:.0f} seconds',
+                    e_camera_prefix=e.camera_prefix,
+                    birth_diff=birth_diff,
+                ),
             )
 
     details: List[str] = []
     if e.strict_filename and not math.isnan(e.filesystem_mtime_epoch):
         filename_epoch = e.filename_time.replace(tzinfo=REPAIR_TZ).timestamp()
-        details.append(f'mtime difference {abs(filename_epoch - e.filesystem_mtime_epoch):.0f} seconds')
+        details.append(localized_format(
+            'mtime difference {difference_seconds:.0f} seconds',
+            difference_seconds=abs(filename_epoch - e.filesystem_mtime_epoch),
+        ))
     if not math.isnan(e.filesystem_birthtime_epoch):
         filename_epoch = e.filename_time.replace(tzinfo=REPAIR_TZ).timestamp()
-        details.append(f'BirthTime difference {abs(filename_epoch - e.filesystem_birthtime_epoch):.0f} seconds')
+        details.append(localized_format(
+            'BirthTime difference {difference_seconds:.0f} seconds',
+            difference_seconds=abs(filename_epoch - e.filesystem_birthtime_epoch),
+        ))
     if e.make:
-        details.append(f'Equipment {e.make} {e.model}'.strip())
+        details.append(localized_format('Equipment {e_make} {e_model}', e_make=e.make, e_model=e.model).strip())
     if e.gps_utc is not None:
         filename_utc = e.filename_time.replace(tzinfo=REPAIR_TZ).astimezone(timezone.utc)
-        details.append(f'GPS error {abs((filename_utc - e.gps_utc).total_seconds()):.0f} seconds')
+        details.append(localized_format(
+            'GPS error {difference_seconds:.0f} seconds',
+            difference_seconds=abs((filename_utc - e.gps_utc).total_seconds()),
+        ))
     if e.modify_date is not None:
-        details.append(f'ModifyDate difference {seconds_between_naive(e.filename_time, e.modify_date):.0f} seconds')
+        details.append(localized_format(
+            'ModifyDate difference {difference_seconds:.0f} seconds',
+            difference_seconds=seconds_between_naive(e.filename_time, e.modify_date),
+        ))
     if e.camera_prefix == "IMG":
         mh = parse_mh_edit_time(e.path)
         if mh is not None:
-            details.append(f'_mh editing time {mh:%Y-%m-%d %H:%M:%S}')
+            details.append(localized_format('_mh editing time {mh:%Y-%m-%d %H:%M:%S}', mh=mh))
     suffix = "；".join(details) if details else 'Insufficient cross-validation fields'
-    return Decision(False, "insufficient-evidence", None, 'Does not meet high-confidence repair rules: ' + suffix)
+    return Decision(False, "insufficient-evidence", None, localized_format(
+        'Does not meet high-confidence repair rules: {details}', details=suffix,
+    ))
 
 
 # ------------------------- Finder tags -------------------------
@@ -656,7 +695,7 @@ def read_finder_tags(path: Path) -> List[str]:
     try:
         value = plistlib.loads(bytes.fromhex(hex_text))
     except Exception as exc:
-        raise RuntimeError(f'Unable to parse the Finder tags binary plist: {exc}') from exc
+        raise RuntimeError(localized_format('Unable to parse the Finder tags binary plist: {exc}', exc=exc)) from exc
     if not isinstance(value, list):
         raise RuntimeError('Finder tags xattr is not an array, rejected overwriting')
     return [v for v in value if isinstance(v, str)]
@@ -678,10 +717,13 @@ def add_and_verify_finder_tag(path: Path, tag_name: str) -> Tuple[bool, str]:
             write_finder_tags(path, updated)
         verified = read_finder_tags(path)
         if not any(finder_tag_base_name(t) == tag_name for t in verified):
-            return False, f'Finder tag verification failed after writing: {tag_name}'
-        return True, f'Finder tags have been confirmed: {tag_name}'
+            return False, localized_format(
+                'Finder tag verification failed after writing: {tag_name}',
+                tag_name=tag_name,
+            )
+        return True, localized_format('Finder tags have been confirmed: {tag_name}', tag_name=tag_name)
     except Exception as exc:
-        return False, f'Finder tag failed: {exc}'
+        return False, localized_format('Finder tag failed: {exc}', exc=exc)
 
 
 # ------------------------- backup / raw JPEG safety -------------------------
@@ -707,7 +749,7 @@ def backup_file(source: Path, source_root: Path, run_backup_root: Path) -> Path:
         rel = Path(source.name)
     dest = run_backup_root / rel
     if dest.exists():
-        raise FileExistsError(f'Backup target exists: {dest}')
+        raise FileExistsError(localized_format('Backup target exists: {dest}', dest=dest))
     ditto_copy(source, dest)
     return dest
 
@@ -867,10 +909,13 @@ def restore_from_backup_content(
             return False, 'SHA-256 of the original file after recovery is inconsistent with the backup'
         ok, msg = add_and_verify_finder_tag(original, FINDER_TAG_NAME)
         if not ok:
-            return False, 'The original content has been restored, but Finder tags could not be confirmed: ' + msg
+            return False, localized_format(
+                'Original content was restored, but Finder tags could not be confirmed: {error}',
+                error=msg,
+            )
         return True, 'Recovered original file contents from a backup and confirmed Finder tags'
     except Exception as exc:
-        return False, f'Recovery failed: {exc}'
+        return False, localized_format('Recovery failed: {exc}', exc=exc)
 
 
 # ------------------------- EXIF candidate write / verify -------------------------
@@ -921,7 +966,9 @@ def verify_repaired_metadata(exiftool: str, path: Path, proposed: datetime) -> T
     if offset_digitized != REPAIR_OFFSET_TEXT:
         problems.append(f"OffsetTimeDigitized={offset_digitized!r}")
     if problems:
-        return False, 'Verification failed: ' + "；".join(problems)
+        return False, localized_format(
+            'Verification failed: {problems}', problems='；'.join(problems),
+        )
     return True, 'EXIF four target fields verification passed'
 
 
@@ -936,19 +983,24 @@ def repair_one_transactional(
     """Repair one JPEG transactionally; return (ok, message, backup_path)."""
     ok, tag_msg = add_and_verify_finder_tag(original, FINDER_TAG_NAME)
     if not ok:
-        return False, tag_msg + '; EXIF repair not executed', None
+        return False, localized_format(
+            '{reason}; EXIF repair was not performed', reason=tag_msg,
+        ), None
 
     original_stat = original.stat()
     original_sha = sha256_file(original)
     try:
         original_fp = jpeg_fingerprint(original)
     except Exception as exc:
-        return False, f'Unable to parse original JPEG structure, refuses to repair: {exc}', None
+        return False, localized_format(
+            'Unable to parse original JPEG structure, refuses to repair: {exc}',
+            exc=exc,
+        ), None
 
     try:
         backup = backup_file(original, source_root, backup_root)
     except Exception as exc:
-        return False, f'Backup failed: {exc}', None
+        return False, localized_format('Backup failed: {exc}', exc=exc), None
 
     backup_sha = sha256_file(backup)
     if backup_sha != original_sha:
@@ -973,7 +1025,10 @@ def repair_one_transactional(
             shutil.copyfile(original, candidate)
             write_ok, retry_msg = write_candidate_exif(exiftool, candidate, proposed, minor=True)
             if not write_ok:
-                raise RuntimeError('Vivo trailer: -m Temporary copy retry failed: ' + (retry_msg or "unknown"))
+                raise RuntimeError(localized_format(
+                    'Vivo trailer: retrying the temporary copy with -m failed: {error}',
+                    error=retry_msg or 'unknown',
+                ))
             write_msg = 'Vivo trailer minor error; used only in temporary copies -m'
 
         candidate_fp_after_write = jpeg_fingerprint(candidate)
@@ -984,7 +1039,13 @@ def repair_one_transactional(
                 append_exact_trailer(candidate, original_fp.trailer)
             elif candidate_fp_after_write.trailer != original_fp.trailer:
                 raise RuntimeError(
-                    f'A non-empty but different JPEG trailer exists after writing, reject submission; before={original_fp.trailer_sha256} after={candidate_fp_after_write.trailer_sha256}'
+                    localized_format(
+                        'A non-empty but different JPEG trailer exists after writing, reject '
+                        'submission; before={original_fp_trailer_sha256} '
+                        'after={candidate_fp_after_write_trailer_sha256}',
+                        original_fp_trailer_sha256=original_fp.trailer_sha256,
+                        candidate_fp_after_write_trailer_sha256=candidate_fp_after_write.trailer_sha256,
+                    )
                 )
         else:
             if candidate_fp_after_write.trailer:
@@ -993,11 +1054,21 @@ def repair_one_transactional(
         candidate_fp = jpeg_fingerprint(candidate)
         if candidate_fp.scan_sha256 != original_fp.scan_sha256:
             raise RuntimeError(
-                f'JPEG SOS→EOI Compressed image data has changed, rejected submission; before={original_fp.scan_sha256} after={candidate_fp.scan_sha256}'
+                localized_format(
+                    'JPEG SOS→EOI Compressed image data has changed, rejected submission; '
+                    'before={original_fp_scan_sha256} after={candidate_fp_scan_sha256}',
+                    original_fp_scan_sha256=original_fp.scan_sha256,
+                    candidate_fp_scan_sha256=candidate_fp.scan_sha256,
+                )
             )
         if candidate_fp.trailer != original_fp.trailer:
             raise RuntimeError(
-                f'The candidate trailer differs from the original file; refusing to commit. Before={original_fp.trailer_sha256} after={candidate_fp.trailer_sha256}'
+                localized_format(
+                    'The candidate trailer differs from the original file; refusing to commit. '
+                    'Before={original_fp_trailer_sha256} after={candidate_fp_trailer_sha256}',
+                    original_fp_trailer_sha256=original_fp.trailer_sha256,
+                    candidate_fp_trailer_sha256=candidate_fp.trailer_sha256,
+                )
             )
 
         exif_ok, exif_msg = verify_repaired_metadata(exiftool, candidate, proposed)
@@ -1018,16 +1089,25 @@ def repair_one_transactional(
             raise RuntimeError('The trailer is inconsistent with the original file after submission.')
         exif_ok, exif_msg = verify_repaired_metadata(exiftool, original, proposed)
         if not exif_ok:
-            raise RuntimeError('After submission ' + exif_msg)
+            raise RuntimeError(localized_format(
+                'After writing metadata: {error}', error=exif_msg,
+            ))
         tags = read_finder_tags(original)
         if not any(finder_tag_base_name(t) == FINDER_TAG_NAME for t in tags):
             raise RuntimeError('Finder tag metadata loss after submission')
 
-        trailer_note = (
-            f'; original trailer SHA-256={original_fp.trailer_sha256} Maintain consistency'
-            if original_fp.trailer else '; the original file has no trailer, and the result still has none'
-        )
-        return True, 'Fix successful; compressed image data unchanged' + trailer_note + "；" + exif_msg, backup
+        if original_fp.trailer:
+            message = localized_format(
+                'Repair succeeded; compressed image data unchanged; trailer SHA-256 remains {trailer_sha256}; {verification}',
+                trailer_sha256=original_fp.trailer_sha256,
+                verification=exif_msg,
+            )
+        else:
+            message = localized_format(
+                'Repair succeeded; compressed image data unchanged; no trailer was present or added; {verification}',
+                verification=exif_msg,
+            )
+        return True, message, backup
 
     except Exception as exc:
         restored, restore_msg = restore_from_backup_content(
@@ -1038,7 +1118,12 @@ def repair_one_transactional(
             expected_backup_sha256=backup_sha,
         )
         suffix = "" if restored else '[Recovery not confirmed successfully]'
-        return False, f'{exc}; Restore state: {restore_msg}{suffix}', backup
+        return False, localized_format(
+            '{exc}; Restore state: {restore_msg}{suffix}',
+            exc=exc,
+            restore_msg=restore_msg,
+            suffix=suffix,
+        ), backup
     finally:
         try:
             candidate.unlink(missing_ok=True)
@@ -1057,7 +1142,11 @@ def move_to_review(path: Path) -> Tuple[bool, str, Optional[Path]]:
         return True, 'Already in the pending manual processing directory', path
     destination = review_destination(path)
     if destination.exists():
-        return False, f'A file with the same name exists in the pending folder; refusing to overwrite: {destination}', None
+        return False, localized_format(
+            'A file with the same name exists in the pending folder; refusing to overwrite: '
+            '{destination}',
+            destination=destination,
+        ), None
     REVIEW_ROOT.mkdir(parents=True, exist_ok=True)
     shutil.move(str(path), str(destination))
     return True, 'Moved to the pending manual processing directory', destination
@@ -1162,9 +1251,13 @@ def read_tui_key() -> str:
 
 def validate_source(source: Path) -> Optional[str]:
     if not source.exists() or not source.is_dir():
-        return f'The source directory does not exist or is not a directory: {source}'
+        return localized_format('The source directory does not exist or is not a directory: {source}', source=source)
     if not path_is_within(source, BACKUP_APPLE_ROOT):
-        return f'Input directory must be within {BACKUP_APPLE_ROOT}: {source}'
+        return localized_format(
+            'Input directory must be within {BACKUP_APPLE_ROOT}: {source}',
+            BACKUP_APPLE_ROOT=BACKUP_APPLE_ROOT,
+            source=source,
+        )
     return None
 
 
@@ -1175,7 +1268,7 @@ def run_once(args: argparse.Namespace) -> int:
     source = Path(args.source).expanduser().resolve()
     source_error = validate_source(source)
     if source_error:
-        print(f'Error: {source_error}', file=sys.stderr)
+        print(localized_format('Error: {source_error}', source_error=source_error), file=sys.stderr)
         return 2
     if (args.apply or args.tag_test_only or args.repair_test_only) and (REPAIR_UTC_OFFSET_MINUTES is None or REPAIR_AUTO_FROM is None or REPAIR_AUTO_UNTIL is None):
         print('Error: Please set the time zone and date range for shooting in config.ini first.', file=sys.stderr)
@@ -1189,11 +1282,14 @@ def run_once(args: argparse.Namespace) -> int:
 
     print("=" * 92)
     print("Photo Metadata Repair")
-    print(f'Version: {SCRIPT_VERSION}')
-    print(f'Input directory: {source}')
-    print(f'Pending manual processing directory: {REVIEW_ROOT}')
+    print(localized_format('Version: {SCRIPT_VERSION}', SCRIPT_VERSION=SCRIPT_VERSION))
+    print(localized_format('Input directory: {source}', source=source))
+    print(localized_format('Pending manual processing directory: {REVIEW_ROOT}', REVIEW_ROOT=REVIEW_ROOT))
     print('Candidate naming: IMG_YYYYMMDD_HHMMSS... / PANO_YYYYMMDD_HHMMSS... / IMGYYYYMMDDHHMMSS...')
-    print(f"Time zone for metadata repair: {(REPAIR_OFFSET_TEXT if REPAIR_UTC_OFFSET_MINUTES is not None else 'Not configured, all confirmed manually')}")
+    print(localized_format(
+        'Time zone for metadata repair: {offset}',
+        offset=REPAIR_OFFSET_TEXT if REPAIR_UTC_OFFSET_MINUTES is not None else 'Not configured, all confirmed manually',
+    ))
     print('Rule A: The absolute time difference between IMG/PANO file names + filesystem mtime must be less than 90 seconds.')
     print('Rule B: Huawei + GPS difference <= 2 seconds + ModifyDate difference <= 5 seconds')
     print('Rule C: IMG _mh suffix with the editing time later on the same day -> take the photo during the half-time of the file name')
@@ -1201,10 +1297,16 @@ def run_once(args: argparse.Namespace) -> int:
     print("Rule E: filesystem BirthTime is at least 2 seconds different from the filename's absolute time.")
     print('Rule F/G: Retain existing historical manual confirmation/sequence confirmation, only IMG exceptions')
     print("Safe writing: temporary copy + verify SOS-to-EOI image bytes + preserve each file's original trailer")
-    print(f'Finder tags before repair: {FINDER_TAG_NAME}(Keep existing tags)')
-    print('Mode: ' + ('APPLY (write + summarize uncorrected)' if args.apply else 'DRY RUN (preview only)'))
+    print(localized_format(
+        'Finder tags before repair: {FINDER_TAG_NAME}(Keep existing tags)',
+        FINDER_TAG_NAME=FINDER_TAG_NAME,
+    ))
+    print(localized_format(
+        'Mode: {mode}',
+        mode='APPLY (write + summarize uncorrected)' if args.apply else 'DRY RUN (preview only)',
+    ))
     print("=" * 92)
-    print(f'Scan the candidate JPEG: {len(paths)}')
+    print(localized_format('Scan the candidate JPEG: {paths_count}', paths_count=len(paths)))
 
     progress = ProgressLine()
     stage_started = time.perf_counter()
@@ -1212,7 +1314,12 @@ def run_once(args: argparse.Namespace) -> int:
     effective_batch_size = args.batch_size if args.batch_size > 0 else 200
     batch_count = (len(paths) + effective_batch_size - 1) // effective_batch_size
     for index, batch in enumerate(chunks(paths, args.batch_size), start=1):
-        progress.update(f'[metadata] ExifTool batch reading {index}/{batch_count} · {len(batch)} files')
+        progress.update(localized_format(
+            '[metadata] ExifTool batch reading {index}/{batch_count} · {batch_count_2} files',
+            index=index,
+            batch_count=batch_count,
+            batch_count_2=len(batch),
+        ))
         metadata_map.update(read_metadata_batch(exiftool, batch))
     progress.clear()
     timings.append(("ExifTool metadata", time.perf_counter() - stage_started))
@@ -1221,7 +1328,11 @@ def run_once(args: argparse.Namespace) -> int:
     decisions: List[Tuple[Evidence, Decision]] = []
     for index, path in enumerate(paths, start=1):
         if index == 1 or index == len(paths) or index % 100 == 0:
-            progress.update(f'[evidence] Evidence judgment {index}/{len(paths)}')
+            progress.update(localized_format(
+                '[evidence] Evidence judgment {index}/{paths_count}',
+                index=index,
+                paths_count=len(paths),
+            ))
         ev = build_evidence(path, metadata_map.get(str(path), {}))
         decisions.append((ev, decide_repair(
             ev, trust_compact_filename_time=args.trust_compact_filename_time
@@ -1242,23 +1353,51 @@ def run_once(args: argparse.Namespace) -> int:
     pano_unres = [(e, d) for e, d in unresolved if e.camera_prefix == "PANO"]
 
     print()
-    print(f'Highly reliable repair: {len(repairable)}（IMG {len(img_rep)}；PANO {len(pano_rep)}）')
-    print(f"  A：{count_rule(repairable, 'A-')}")
-    print(f"  B：{count_rule(repairable, 'B-')}")
-    print(f"  C：{count_rule(repairable, 'C-')}")
-    print(f"  D：{count_rule(repairable, 'D-')}")
-    print(f"  E：{count_rule(repairable, 'E-')}")
-    print(f"  F：{count_rule(repairable, 'F-')}")
-    print(f"  G：{count_rule(repairable, 'G-')}")
-    print(f'There are already valid embedded dates, no modification: {len(existing)}')
-    print(f'Still needs manual processing: {len(unresolved)}（IMG {len(img_unres)}；PANO {len(pano_unres)}）')
+    print(localized_format(
+        'Highly reliable repair: {repairable_count}(IMG {img_rep_count}; PANO {pano_rep_count})',
+        repairable_count=len(repairable),
+        img_rep_count=len(img_rep),
+        pano_rep_count=len(pano_rep),
+    ))
+    print(localized_format("  A: {count}", count=count_rule(repairable, "A-")))
+    print(localized_format("  B: {count}", count=count_rule(repairable, "B-")))
+    print(localized_format("  C: {count}", count=count_rule(repairable, "C-")))
+    print(localized_format("  D: {count}", count=count_rule(repairable, "D-")))
+    print(localized_format("  E: {count}", count=count_rule(repairable, "E-")))
+    print(localized_format("  F: {count}", count=count_rule(repairable, "F-")))
+    print(localized_format("  G: {count}", count=count_rule(repairable, "G-")))
+    print(localized_format(
+        'There are already valid embedded dates, no modification: {existing_count}',
+        existing_count=len(existing),
+    ))
+    print(localized_format(
+        'Still needs manual processing: {unresolved_count}(IMG {img_unres_count}; PANO '
+        '{pano_unres_count})',
+        unresolved_count=len(unresolved),
+        img_unres_count=len(img_unres),
+        pano_unres_count=len(pano_unres),
+    ))
     print()
 
     for e, d in repairable:
         assert d.proposed_time is not None
-        print(f'[Fix] {e.path}\n       -> {format_exif_time(d.proposed_time)} {REPAIR_OFFSET_TEXT}\n       {d.rule}：{d.reason}')
+        print(localized_format(
+            '[Fix] {e_path}\n       -> {proposed_time} {REPAIR_OFFSET_TEXT}\n       {d_rule}: '
+            '{d_reason}',
+            e_path=e.path,
+            proposed_time=format_exif_time(d.proposed_time),
+            REPAIR_OFFSET_TEXT=REPAIR_OFFSET_TEXT,
+            d_rule=d.rule,
+            d_reason=d.reason,
+        ))
     for e, d in unresolved:
-        print(f'[Waiting for human intervention] {e.path}\n         {d.reason}\n         -> {review_destination(e.path)}')
+        print(localized_format(
+            '[Waiting for human intervention] {e_path}\n         {d_reason}\n         -> '
+            '{review_path}',
+            e_path=e.path,
+            d_reason=d.reason,
+            review_path=review_destination(e.path),
+        ))
 
     if args.tag_test_only:
         if not repairable:
@@ -1268,13 +1407,16 @@ def run_once(args: argparse.Namespace) -> int:
         try:
             require_tools()
         except Exception as exc:
-            print(f'Error: Tool pre-check failed: {exc}', file=sys.stderr)
+            print(localized_format('Error: Tool pre-check failed: {exc}', exc=exc), file=sys.stderr)
             return 2
         e, _ = repairable[0]
         stage_started = time.perf_counter()
         ok, msg = add_and_verify_finder_tag(e.path, FINDER_TAG_NAME)
         timings.append(('Finder Tag Test', time.perf_counter() - stage_started))
-        print(('[Test successful] ' if ok else '[Test failed] ') + msg)
+        if ok:
+            print(localized_format('[Test successful] {message}', message=msg))
+        else:
+            print(localized_format('[Test failed] {message}', message=msg))
         print('No EXIF was modified, nor any files moved.')
         print_stage_timings(timings, time.perf_counter() - total_started)
         return 0 if ok else 1
@@ -1287,7 +1429,7 @@ def run_once(args: argparse.Namespace) -> int:
         try:
             exiftool = require_tools()
         except Exception as exc:
-            print(f'Error: Tool pre-check failed: {exc}', file=sys.stderr)
+            print(localized_format('Error: Tool pre-check failed: {exc}', exc=exc), file=sys.stderr)
             return 2
         e, d = repairable[0]
         assert d.proposed_time is not None
@@ -1297,9 +1439,12 @@ def run_once(args: argparse.Namespace) -> int:
         stage_started = time.perf_counter()
         ok, msg, backup = repair_one_transactional(exiftool, e.path, d.proposed_time, source, backup_root, work_root)
         timings.append(('Single file transaction repair test', time.perf_counter() - stage_started))
-        print(('[Test successful] ' if ok else '[Test failed] ') + msg)
+        if ok:
+            print(localized_format('[Test successful] {message}', message=msg))
+        else:
+            print(localized_format('[Test failed] {message}', message=msg))
         if backup:
-            print(f'Backup: {backup}')
+            print(localized_format('Backup: {backup}', backup=backup))
         print('Processed only 1 file, no files moved.')
         print_stage_timings(timings, time.perf_counter() - total_started)
         return 0 if ok else 1
@@ -1313,7 +1458,7 @@ def run_once(args: argparse.Namespace) -> int:
     try:
         exiftool = require_tools()
     except Exception as exc:
-        print(f'Error: Tool pre-check failed: {exc}', file=sys.stderr)
+        print(localized_format('Error: Tool pre-check failed: {exc}', exc=exc), file=sys.stderr)
         return 2
 
     run_id = datetime.now().astimezone().strftime("%Y%m%d_%H%M%S")
@@ -1330,10 +1475,22 @@ def run_once(args: argparse.Namespace) -> int:
         )
         if ok:
             repaired_paths.add(e.path)
-            print(f'[Successfully repaired {index}/{len(repairable)}] {e.path}：{msg}')
+            print(localized_format(
+                '[Successfully repaired {index}/{repairable_count}] {e_path}: {msg}',
+                index=index,
+                repairable_count=len(repairable),
+                e_path=e.path,
+                msg=msg,
+            ))
             rows.append(ResultRow(str(e.path), "repaired", d.rule, format_exif_time(d.proposed_time), d.reason, str(e.path), str(backup or "")))
         else:
-            print(f'[Failed and retained in place {index}/{len(repairable)}] {e.path}：{msg}', file=sys.stderr)
+            print(localized_format(
+                '[Failed and retained in place {index}/{repairable_count}] {e_path}: {msg}',
+                index=index,
+                repairable_count=len(repairable),
+                e_path=e.path,
+                msg=msg,
+            ), file=sys.stderr)
             rows.append(ResultRow(str(e.path), "repair-failed", d.rule, format_exif_time(d.proposed_time), msg, str(e.path), str(backup or "")))
     timings.append(('Transaction repair/file-by-file verification', time.perf_counter() - stage_started))
 
@@ -1342,17 +1499,33 @@ def run_once(args: argparse.Namespace) -> int:
     stage_started = time.perf_counter()
     for index, (e, d) in enumerate(unresolved, start=1):
         if not e.path.exists():
-            rows.append(ResultRow(str(e.path), "review-move-failed", d.rule, "", d.reason + '; The source file does not exist'))
+            rows.append(ResultRow(str(e.path), "review-move-failed", d.rule, "", localized_format(
+                '{reason}; the source file no longer exists', reason=d.reason,
+            )))
             review_failures += 1
             continue
         ok, move_msg, destination = move_to_review(e.path)
         if ok:
             moved_review += 1
-            print(f'[Summary pending manual processing {index}/{len(unresolved)}] {e.path} -> {destination}')
+            print(localized_format(
+                '[Summary pending manual processing {index}/{unresolved_count}] {e_path} -> '
+                '{destination}',
+                index=index,
+                unresolved_count=len(unresolved),
+                e_path=e.path,
+                destination=destination,
+            ))
             rows.append(ResultRow(str(e.path), "moved-to-review", d.rule, "", d.reason, str(destination or "")))
         else:
             review_failures += 1
-            print(f'[Failure {index}/{len(unresolved)}] File requiring manual review was not moved: {e.path}：{move_msg}', file=sys.stderr)
+            print(localized_format(
+                '[Failure {index}/{unresolved_count}] File requiring manual review was not moved: '
+                '{e_path}: {move_msg}',
+                index=index,
+                unresolved_count=len(unresolved),
+                e_path=e.path,
+                move_msg=move_msg,
+            ), file=sys.stderr)
             rows.append(ResultRow(str(e.path), "review-move-failed", d.rule, "", d.reason + "；" + move_msg))
     timings.append(('Pending manual aggregation and movement', time.perf_counter() - stage_started))
 
@@ -1376,12 +1549,18 @@ def run_once(args: argparse.Namespace) -> int:
     print()
     print("=" * 92)
     print('Completed')
-    print(f'Successfully repaired: {len(repaired_paths)}')
-    print(f'Operation failed and retained in place: {len(repairable) - len(repaired_paths)}')
-    print(f'Summarized into the manual directory: {moved_review}')
-    print(f'Failed to move a file for manual review: {review_failures}')
-    print(f'Backup directory: {backup_root}')
-    print(f'Report: {report_path}')
+    print(localized_format('Successfully repaired: {repaired_paths_count}', repaired_paths_count=len(repaired_paths)))
+    print(localized_format(
+        'Operation failed and retained in place: {remaining_count}',
+        remaining_count=len(repairable) - len(repaired_paths),
+    ))
+    print(localized_format('Summarized into the manual directory: {moved_review}', moved_review=moved_review))
+    print(localized_format(
+        'Failed to move a file for manual review: {review_failures}',
+        review_failures=review_failures,
+    ))
+    print(localized_format('Backup directory: {backup_root}', backup_root=backup_root))
+    print(localized_format('Report: {report_path}', report_path=report_path))
     print('The photo is restored successfully and remains in its original location; next, run Gallery Organizer to classify it by the new EXIF.')
     print("=" * 92)
     print_stage_timings(timings, time.perf_counter() - total_started)
@@ -1391,7 +1570,7 @@ def run_once(args: argparse.Namespace) -> int:
 def tui_header() -> None:
     print("=" * 72)
     print("Photo Metadata Repair · TUI")
-    print(f'Version: {SCRIPT_VERSION}')
+    print(localized_format('Version: {SCRIPT_VERSION}', SCRIPT_VERSION=SCRIPT_VERSION))
     print('Default DRY RUN; only apply if you explicitly press A.')
     print('Candidate: IMG_YYYYMMDD_HHMMSS... / PANO_YYYYMMDD_HHMMSS... JPEG')
     print("=" * 72)
@@ -1416,7 +1595,7 @@ def run_tui(batch_size: int) -> int:
         source = Path(normalized).expanduser().resolve()
         source_error = validate_source(source)
         if source_error:
-            print(f'Error: {source_error}')
+            print(localized_format('Error: {source_error}', source_error=source_error))
             print('Press any key to return.')
             read_tui_key()
             continue

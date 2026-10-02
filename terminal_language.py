@@ -29,7 +29,12 @@ def _prepare(language: str) -> None:
     else:
         catalog = {key: value for key, value in catalog.items() if key != value}
     _CATALOGS[language] = catalog
-    keys = sorted(catalog, key=len, reverse=True)
+    # Complete templates are translated before formatting; they do not belong in
+    # the fallback matcher for already rendered terminal text.
+    keys = sorted(
+        (key for key in catalog if language != "zh" or "{" not in key),
+        key=len, reverse=True,
+    )
     if language == "zh":
         parts = []
         for key in keys:
