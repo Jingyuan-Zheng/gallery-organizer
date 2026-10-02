@@ -2,6 +2,8 @@
 
 [English README](README.md)
 
+Gallery Organizer 是一款在终端中交互使用的照片图库整理工具。它会先展示整理预览，再由你决定是否执行；能确认关联的文件尽量成组处理，不确定的文件留待人工核对。
+
 ## 为什么需要它？
 
 - **编号重复。** 苹果设备和数码相机可能重复使用编号文件名，不同时期的不同照片也可能同名。
@@ -132,5 +134,5 @@ python3 organize_leftover_media.py "/实际路径/Incoming/Stage1/一批照片" 
 
 ## 注意事项
 
-- **先导出，再整理：** Gallery Organizer 只整理已经导出的照片和视频，不能从 iPhone、相机或其他设备导出照片。请先用其他工具导出。
+- **仅作为整理工具：** Gallery Organizer 只整理已经导出的照片和视频，不能从 iPhone、相机或其他设备导出照片。请先用其他工具导出。
 - **仅支持 macOS：** 在 Windows 或 Linux 上，脚本会显示提示并退出，不会处理文件。

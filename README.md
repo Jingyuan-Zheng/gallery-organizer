@@ -2,6 +2,8 @@
 
 [中文说明](README.zh-CN.md)
 
+Gallery Organizer is an interactive terminal tool for sorting a photo library. It guides you through a preview before making changes, keeps related media together when it can, and puts uncertain files aside for review.
+
 ## Why use it?
 
 - **Repeated filenames.** Apple devices and digital cameras can reuse numbered names, so different photos from different periods may have the same filename.
@@ -132,5 +134,5 @@ These settings affect only `repair_photo_metadata.py`. Set `utc_offset`, `auto_f
 
 ## Notes
 
-- **Export first:** Gallery Organizer organizes photos and videos you have already exported. It cannot export photos from an iPhone, camera, or other device; use another tool to export them first.
+- **Organize only:** Gallery Organizer organizes photos and videos you have already exported. It cannot export photos from an iPhone, camera, or other device; use another tool to export them first.
 - **macOS only:** On Windows and Linux, the scripts show a message and exit without processing files.
