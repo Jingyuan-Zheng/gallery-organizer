@@ -65,9 +65,9 @@
 from __future__ import annotations
 
 import sys
+from platform_guard import require_macos
 
-if sys.platform != "darwin":
-    raise SystemExit("此脚本仅支持 macOS；Windows 和 Linux 上不会运行。")
+require_macos(__file__)
 
 import argparse
 import atexit
@@ -95,12 +95,19 @@ from pathlib import Path
 from typing import Dict, Iterator, List, Optional, Sequence, Set, Tuple
 
 
+from terminal_language import LocalizedArgumentParser, install_terminal_language, localized_input
+
 from gallery_config import (
+    LANGUAGE,
     BACKUP_ROOT as BACKUP_APPLE_ROOT, GALLERY_ROOT,
     MAIN_LIBRARY_ROOT as DESTINATION_ROOT, DUPLICATE_ROOT,
     FORMAT_VARIANT_DUPLICATE_ROOT, SOURCE_STAGE0_ROOT, COMPLETED_SOURCE_ROOT,
     HASH_CACHE_DB, XATTR_TOOL, SIPS_TOOL, FFMPEG_TOOL,
 )
+install_terminal_language(LANGUAGE)
+if LANGUAGE == "en":
+    input = localized_input
+
 SCRIPT_VERSION = "2026-08-27-duplicate-best-mtime-transactional-swap"
 
 TIME_TOLERANCE_SECONDS = 20
@@ -717,17 +724,25 @@ def finish_stage_progress() -> None:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description=(
-            "从指定来源目录扫描手机相机媒体，并固定整理到 "
-            f"{DESTINATION_ROOT}/YYYY/YYYY-MM/；与目标字节完全相同的来源副本 "
-            f"按 mtime 与拍摄时间择优，另一份移入 {DUPLICATE_ROOT}/。"
-        )
+    description = (
+        "从指定来源目录扫描手机相机媒体，并固定整理到 "
+        f"{DESTINATION_ROOT}/YYYY/YYYY-MM/；与目标字节完全相同的来源副本 "
+        f"按 mtime 与拍摄时间择优，另一份移入 {DUPLICATE_ROOT}/。"
     )
+    if LANGUAGE == "en":
+        description = (
+            f"Scan camera media from the specified source into {DESTINATION_ROOT}/YYYY/YYYY-MM/. "
+            f"For exact duplicates, keep the copy whose modification time is closer to the "
+            f"capture time and move the other to {DUPLICATE_ROOT}/."
+        )
+    parser = LocalizedArgumentParser(description=description)
     parser.add_argument(
         "folder",
         nargs="?",
         help=(
+            f"Source directory within {BACKUP_APPLE_ROOT}. Omit it for the interactive interface. "
+            f"Camera media goes to {DESTINATION_ROOT}; exact duplicates go to {DUPLICATE_ROOT}."
+            if LANGUAGE == "en" else
             "来源目录；必须位于 "
             f"{BACKUP_APPLE_ROOT} 内。省略时进入交互式 TUI。目标目录固定为 {DESTINATION_ROOT}；"
             f"完全重复副本按 mtime 与拍摄时间择优，另一份隔离到 {DUPLICATE_ROOT}。"
@@ -4824,7 +4839,10 @@ def run_organizer(args: argparse.Namespace) -> int:
     print(f"固定目标：{destination_root}")
     print(f"重复副本隔离：{duplicate_root}")
     print(f"同图非首选格式隔离：{FORMAT_VARIANT_DUPLICATE_ROOT}")
-    print(f"apply 完成目录归档：{SOURCE_STAGE0_ROOT}/名称 -> {COMPLETED_SOURCE_ROOT}/名称")
+    if LANGUAGE == "en":
+        print(f"After apply, archive a completed batch: {SOURCE_STAGE0_ROOT}/name -> {COMPLETED_SOURCE_ROOT}/name")
+    else:
+        print(f"apply 完成目录归档：{SOURCE_STAGE0_ROOT}/名称 -> {COMPLETED_SOURCE_ROOT}/名称")
     print(f"Android 时间容差：<= {TIME_TOLERANCE_SECONDS} 秒")
     print(
         "模式："

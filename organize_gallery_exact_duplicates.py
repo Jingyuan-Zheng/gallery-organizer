@@ -14,9 +14,9 @@
 from __future__ import annotations
 
 import sys
+from platform_guard import require_macos
 
-if sys.platform != "darwin":
-    raise SystemExit("此脚本仅支持 macOS；Windows 和 Linux 上不会运行。")
+require_macos(__file__)
 
 import argparse
 from functools import lru_cache
@@ -36,11 +36,18 @@ except ImportError:
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
+from terminal_language import LocalizedArgumentParser, install_terminal_language, localized_input
+
 from gallery_config import (
+    LANGUAGE,
     BACKUP_ROOT, GALLERY_ROOT, MAIN_LIBRARY_ROOT as LIBRARY_ROOT,
     DUPLICATE_ROOT, FILE_TOOL, SIPS_TOOL, EXIFTOOL_TOOL,
     HEIF_CONVERT_TOOL, FFMPEG_TOOL,
 )
+install_terminal_language(LANGUAGE)
+if LANGUAGE == "en":
+    input = localized_input
+
 HASH_WORKERS = min(8, max(1, os.cpu_count() or 4))
 HASH_CHUNK_BYTES = 8 * 1024 * 1024
 VISUAL_MEAN_DELTA_LIMIT = 7.0
@@ -774,7 +781,7 @@ def matching_sidecar_moves(
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser()
+    parser = LocalizedArgumentParser()
     parser.add_argument(
         "directory", type=Path,
         help="要整理的目录（必须位于 gallery_config.py 的 MAIN_LIBRARY_ROOT 内）",

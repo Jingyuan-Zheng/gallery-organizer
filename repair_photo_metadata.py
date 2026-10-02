@@ -93,9 +93,9 @@ Apply from CLI:
 from __future__ import annotations
 
 import sys
+from platform_guard import require_macos
 
-if sys.platform != "darwin":
-    raise SystemExit("此脚本仅支持 macOS；Windows 和 Linux 上不会运行。")
+require_macos(__file__)
 
 import argparse
 import csv
@@ -115,7 +115,10 @@ from pathlib import Path
 from typing import Dict, Iterator, List, Optional, Sequence, Tuple
 
 
+from terminal_language import LocalizedArgumentParser, install_terminal_language, localized_input
+
 from gallery_config import (
+    LANGUAGE,
     BACKUP_ROOT as BACKUP_APPLE_ROOT,
     SECOND_STAGE_LIBRARY_ROOT as LIBRARY_ROOT,
     METADATA_REVIEW_ROOT as REVIEW_ROOT,
@@ -127,6 +130,10 @@ from gallery_config import (
     EXIFTOOL_TOOL, REPAIR_UTC_OFFSET_MINUTES, REPAIR_OFFSET_TEXT, REPAIR_AUTO_FROM,
     REPAIR_AUTO_UNTIL, REPAIR_REVIEW_MONTHS,
 )
+install_terminal_language(LANGUAGE)
+if LANGUAGE == "en":
+    input = localized_input
+
 SCRIPT_VERSION = "2026-08-18-2136-tui-timing"
 
 REPAIR_TZ = timezone(timedelta(minutes=REPAIR_UTC_OFFSET_MINUTES or 0))
@@ -216,7 +223,7 @@ class ResultRow:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
+    parser = LocalizedArgumentParser(
         description="Repair high-confidence missing capture-time EXIF for IMG/PANO JPEGs."
     )
     parser.add_argument(

@@ -30,9 +30,9 @@
 from __future__ import annotations
 
 import sys
+from platform_guard import require_macos
 
-if sys.platform != "darwin":
-    raise SystemExit("此脚本仅支持 macOS；Windows 和 Linux 上不会运行。")
+require_macos(__file__)
 
 import argparse
 import atexit
@@ -60,12 +60,19 @@ from pathlib import Path
 from typing import Dict, Iterator, List, Optional, Sequence, Set, Tuple
 
 
+from terminal_language import LocalizedArgumentParser, install_terminal_language, localized_input
+
 from gallery_config import (
+    LANGUAGE,
     BACKUP_ROOT as BACKUP_APPLE_ROOT, GALLERY_ROOT,
     SECOND_STAGE_LIBRARY_ROOT as DESTINATION_ROOT,
     DUPLICATE_ROOT, OTHER_MEDIA_ROOT, REPAIR_MEDIA_ROOT, SCREEN_ROOT,
     SECOND_STAGE_DUPLICATE_ROOT, HASH_CACHE_DB, XATTR_TOOL, SIPS_TOOL,
 )
+install_terminal_language(LANGUAGE)
+if LANGUAGE == "en":
+    input = localized_input
+
 SCRIPT_VERSION = "2026-08-27-centralized-path-config"
 
 TIME_TOLERANCE_SECONDS = 20
@@ -565,17 +572,24 @@ def finish_stage_progress() -> None:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description=(
-            "从指定来源目录扫描手机相机媒体，并固定整理到 "
-            f"{DESTINATION_ROOT}/YYYY/YYYY-MM/；与目标字节完全相同的来源副本 "
-            f"移入 {DUPLICATE_ROOT}/。"
-        )
+    description = (
+        "从指定来源目录扫描手机相机媒体，并固定整理到 "
+        f"{DESTINATION_ROOT}/YYYY/YYYY-MM/；与目标字节完全相同的来源副本 "
+        f"移入 {DUPLICATE_ROOT}/。"
     )
+    if LANGUAGE == "en":
+        description = (
+            f"Classify remaining media from a specified source. Confirmed camera media goes to "
+            f"{DESTINATION_ROOT}/YYYY/YYYY-MM/; confirmed duplicates go to {DUPLICATE_ROOT}/."
+        )
+    parser = LocalizedArgumentParser(description=description)
     parser.add_argument(
         "folder",
         nargs="?",
         help=(
+            f"Source directory within {BACKUP_APPLE_ROOT}. Omit it for the interactive interface. "
+            f"Confirmed camera media goes to {DESTINATION_ROOT}; duplicates go to {DUPLICATE_ROOT}."
+            if LANGUAGE == "en" else
             "来源目录；必须位于 "
             f"{BACKUP_APPLE_ROOT} 内。省略时进入交互式 TUI。目标目录固定为 {DESTINATION_ROOT}；"
             f"完全重复副本隔离到 {DUPLICATE_ROOT}。"
@@ -4342,7 +4356,7 @@ class GlobalDuplicateMatch:
 
 
 def secondary_parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
+    parser = LocalizedArgumentParser(
         description="整理主 Organizer 留在原地的媒体；默认 DRY RUN。"
     )
     parser.add_argument("folder", nargs="?", help="要处理的来源目录")

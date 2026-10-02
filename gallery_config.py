@@ -14,18 +14,42 @@ if not _parser.read(CONFIG_FILE, encoding="utf-8"):
     raise FileNotFoundError(f"找不到配置文件：{CONFIG_FILE}")
 
 
+_ERRORS = {
+    "missing": ("config.ini 缺少 [{section}] {key}", "config.ini is missing [{section}] {key}"),
+    "empty_path": ("config.ini 的 [paths] {key} 不能为空", "config.ini [paths] {key} cannot be empty"),
+    "date_format": ("config.ini 的 {key} 请填写 YYYYMMDD", "config.ini {key} must use YYYYMMDD"),
+    "invalid_date": ("config.ini 的 {key} 不是有效日期：{value}", "config.ini {key} is not a valid date: {value}"),
+    "offset_format": ("config.ini 的 utc_offset 请填写 +08:00 这样的时区", "config.ini utc_offset must use a format such as +08:00"),
+    "invalid_offset": ("config.ini 的 utc_offset 无效：{value}", "config.ini utc_offset is invalid: {value}"),
+    "date_order": ("config.ini 的 auto_from 晚于 auto_through", "config.ini auto_from is later than auto_through"),
+    "month_format": ("config.ini 的 review_months 请填写 YYYYMM：{value}", "config.ini review_months must use YYYYMM: {value}"),
+    "gps_format": ("config.ini 的 confirmed_gps_derivative_utc 请填写 YYYYMMDDTHHMMSSZ", "config.ini confirmed_gps_derivative_utc must use YYYYMMDDTHHMMSSZ"),
+}
+
+
+def _config_error(code: str, **values: str) -> str:
+    chinese, english = _ERRORS[code]
+    language = _parser.get("general", "language", fallback="zh").strip().lower()
+    return (english if language == "en" else chinese).format(**values)
+
+
 def _value(section: str, key: str) -> str:
     try:
         value = _parser[section][key].strip()
     except KeyError as exc:
-        raise ValueError(f"config.ini 缺少 [{section}] {key}") from exc
+        raise ValueError(_config_error("missing", section=section, key=key)) from exc
     return value
+
+
+LANGUAGE = _value("general", "language").lower()
+if LANGUAGE not in {"zh", "en"}:
+    raise ValueError("config.ini: [general] language must be zh or en")
 
 
 def _path(key: str, *, root: Path | None = None) -> Path:
     value = _value("paths", key)
     if not value:
-        raise ValueError(f"config.ini 的 [paths] {key} 不能为空")
+        raise ValueError(_config_error("empty_path", key=key))
     path = Path(os.path.expandvars(value)).expanduser()
     if not path.is_absolute():
         path = (root or CONFIG_FILE.parent) / path
@@ -37,11 +61,11 @@ def _date(key: str) -> datetime | None:
     if not value:
         return None
     if not re.fullmatch(r"\d{8}", value):
-        raise ValueError(f"config.ini 的 {key} 请填写 YYYYMMDD")
+        raise ValueError(_config_error("date_format", key=key))
     try:
         return datetime.strptime(value, "%Y%m%d")
     except ValueError as exc:
-        raise ValueError(f"config.ini 的 {key} 不是有效日期：{value}") from exc
+        raise ValueError(_config_error("invalid_date", key=key, value=value)) from exc
 
 
 def _utc_offset() -> int | None:
@@ -50,15 +74,15 @@ def _utc_offset() -> int | None:
         return None
     match = re.fullmatch(r"([+-])(\d{2}):(\d{2})", value)
     if not match:
-        raise ValueError("config.ini 的 utc_offset 请填写 +08:00 这样的时区")
+        raise ValueError(_config_error("offset_format"))
     hours, minutes = int(match[2]), int(match[3])
     if hours > 23 or minutes > 59:
-        raise ValueError(f"config.ini 的 utc_offset 无效：{value}")
+        raise ValueError(_config_error("invalid_offset", value=value))
     offset = (hours * 60 + minutes) * (1 if match[1] == "+" else -1)
     try:
         timezone(timedelta(minutes=offset))
     except ValueError as exc:
-        raise ValueError(f"config.ini 的 utc_offset 无效：{value}") from exc
+        raise ValueError(_config_error("invalid_offset", value=value)) from exc
     return offset
 
 
@@ -99,12 +123,12 @@ REPAIR_AUTO_FROM = _date("auto_from")
 _through = _date("auto_through")
 REPAIR_AUTO_UNTIL = _through + timedelta(days=1) if _through is not None else None
 if REPAIR_AUTO_FROM and _through and REPAIR_AUTO_FROM > _through:
-    raise ValueError("config.ini 的 auto_from 晚于 auto_through")
+    raise ValueError(_config_error("date_order"))
 _months = _value("metadata_repair", "review_months")
 REPAIR_REVIEW_MONTHS: set[tuple[int, int]] = set()
 for _month in filter(None, (item.strip() for item in _months.split(","))):
     if not re.fullmatch(r"\d{6}", _month) or not 1 <= int(_month[4:]) <= 12:
-        raise ValueError(f"config.ini 的 review_months 请填写 YYYYMM：{_month}")
+        raise ValueError(_config_error("month_format", value=_month))
     REPAIR_REVIEW_MONTHS.add((int(_month[:4]), int(_month[4:])))
 
 CONFIRMED_GPS_DERIVATIVE_FILENAME = _value("metadata_repair", "confirmed_gps_derivative_filename")
@@ -113,7 +137,7 @@ if _gps_utc:
     try:
         CONFIRMED_GPS_DERIVATIVE_UTC = datetime.strptime(_gps_utc, "%Y%m%dT%H%M%SZ").replace(tzinfo=timezone.utc)
     except ValueError as exc:
-        raise ValueError("config.ini 的 confirmed_gps_derivative_utc 请填写 YYYYMMDDTHHMMSSZ") from exc
+        raise ValueError(_config_error("gps_format")) from exc
 else:
     CONFIRMED_GPS_DERIVATIVE_UTC = None
 VALIDATED_FILENAME_SEQUENCE = {

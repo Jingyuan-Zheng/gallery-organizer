@@ -1,110 +1,120 @@
 # Gallery Organizer
 
-在 macOS 上整理照片、视频和伴随文件（例如 XMP、AAE），隔离确认的重复副本，并对符合特定证据规则的 JPEG 修复拍摄时间。四个脚本各自运行，**不会自动串成一条流水线**。普通运行默认只预览；命令行的 `--apply` 或交互界面中的执行确认会修改文件。时间修复脚本的两个测试选项也会写入，请先阅读其帮助。
+[中文说明](README.zh-CN.md)
 
-## 系统兼容性
+Gallery Organizer sorts photos, videos, and companion files such as XMP and AAE on macOS. It quarantines confirmed duplicates and can repair capture-time metadata in selected JPEGs. The four scripts run independently; they do not form an automatic pipeline. Normal runs preview changes. `--apply` or an explicit choice in the interactive interface performs changes. The metadata repair script also has two test options that write to files; read its help before using them.
 
-**目前仅支持 macOS。** 四个入口脚本在启动时检查操作系统；在 Windows 或 Linux 上会立即显示提示并退出，不会开始扫描或移动文件。Python 本身可在这些系统运行，但本项目使用了 macOS 的 Finder 标签、扩展属性、`sips` 和 `ditto` 等功能。修改 `config.ini` 的路径或工具位置不能使脚本跨平台运行。
+## Language and compatibility
 
-## 先看文件会去哪
+In [config.ini](config.ini), set `[general] language = zh` for the existing Chinese terminal interface or `language = en` for English terminal messages. The default is `zh`. File names, user paths, and configured directory names are displayed as they exist on disk. Both languages use the same sorting rules and file operations.
 
-下面是默认配置的示意结构。实际位置由 [config.ini](config.ini) 决定；脚本仅在需要时创建目标目录，不会预先创建整棵目录树。
+**macOS only.** All four entry scripts check the operating system at startup. On Windows or Linux they display a message and exit before scanning or moving files. Python itself is cross-platform, but this project relies on macOS Finder tags, extended attributes, `sips`, and `ditto`. Changing paths or tool locations in `config.ini` does not make the scripts cross-platform.
+
+## Where files go
+
+The tree shows the default configuration. Change locations in [config.ini](config.ini). Scripts create destination folders only when needed.
 
 ```text
-~/Pictures/GalleryOrganizer/                 ← backup_root；所有来源和目标的边界
+~/Pictures/GalleryOrganizer/                 ← backup_root: boundary for media sources and outputs
 ├── Incoming/                                 ← inbox_root
 │   ├── Stage0/                               ← source_stage0_root
-│   │   └── 一批待整理照片/                     ← 运行主脚本时指定这个直接子目录
+│   │   └── Batch A/                          ← pass this immediate child to the main script
 │   └── Stage1/                               ← completed_source_root
-│       └── 一批待整理照片/                     ← 主脚本无失败后，整个来源目录移到这里
+│       └── Batch A/                          ← whole batch archived after a successful apply
 └── Gallery/                                  ← gallery_root
     ├── Main/                                 ← main_library_root
-    │   └── 2024/2024-06/照片.heic              ← 主脚本确认的相机媒体
+    │   └── 2024/2024-06/photo.heic           ← confirmed camera media from the main script
     ├── SortedFromUnsorted/                   ← second_stage_library_root
-    │   └── 2024/2024-06/照片.heic              ← 第二阶段重新确认的相机媒体
+    │   └── 2024/2024-06/photo.heic           ← camera media confirmed in stage two
     ├── Screenshots/                          ← screen_root
-    │   └── 2024/2024-06/截图.png               ← 第二阶段确认的截图或录屏
+    │   └── 2024/2024-06/capture.png          ← confirmed screenshot or screen recording
     ├── OtherMedia/                           ← other_media_root
-    │   ├── 下载与保存/…
-    │   └── 来源无法确认/…
+    │   ├── 下载与保存/…                        ← downloaded or saved media
+    │   └── 来源无法确认/…                      ← origin cannot be confirmed
     ├── NeedsRepair/                          ← repair_media_root
-    │   ├── 拍摄时间缺失或异常/…
-    │   └── Sidecar关联异常/…
+    │   ├── 拍摄时间缺失或异常/…                  ← capture-time problem
+    │   └── Sidecar关联异常/…                   ← companion-file association problem
     ├── Duplicate/                            ← duplicate_root
-    │   ├── Incoming/Stage0/…                  ← 主脚本确认的完全重复副本，保留来源相对路径
+    │   ├── Incoming/Stage0/…                  ← exact duplicates, mirroring the source path
     │   ├── FormatVariants/…                   ← format_variant_duplicate_root
     │   └── Unsorted/…                         ← second_stage_duplicate_root
-    ├── MetadataReview/                       ← metadata_review_root；人工核对及报告
-    ├── MetadataRepairBackups/                ← metadata_backup_root；修复前备份
-    └── MetadataRepairWork/                   ← metadata_work_root；修复临时文件
+    ├── MetadataReview/                       ← metadata_review_root: manual review and reports
+    ├── MetadataRepairBackups/                ← metadata_backup_root: original-file backups
+    └── MetadataRepairWork/                   ← metadata_work_root: temporary repair files
 ```
 
-有可靠日期的分类目录通常先用 `YYYY/YYYY-MM/`；同名但内容不同且发生冲突时，脚本可能改放 `YYYY-MM-DD/` 或 `SHA256-…/` 子目录。日期无法确认时放入“日期未知”。上述树只展示常见去向，不代表每次运行都会产生这些文件。
+The category folder names in this example are currently part of the file-sorting rules and may remain Chinese even with an English terminal interface. Files with a reliable date normally go under `YYYY/YYYY-MM/`. If a different file has the same name, the script may use a `YYYY-MM-DD/` or `SHA256-…/` subfolder. Files without a reliable date go under a category's `日期未知/` (“date unknown”) folder. The tree illustrates possible outputs; a run does not create every folder.
 
-## 四个脚本怎样处理文件
+## How the four scripts work
 
-| 步骤 | 脚本 | 处理逻辑与结果 |
+| Step | Script | Behavior |
 | --- | --- | --- |
-| 1. 主整理 | `organize_gallery_media.py` | 扫描指定来源，读取文件名、元数据和来源证据，恢复 Live Photo 与 sidecar 的关联。能够确认是相机媒体的整组进入 `main_library_root`；明确截图、录屏、下载和证据不够的文件留在来源目录。确认的重复副本进入 `duplicate_root`，同图非首选格式进入 `format_variant_duplicate_root`。文件不因同名而被覆盖。 |
-| 2. 剩余媒体 | `organize_leftover_media.py` | 对指定来源中剩余的文件重新恢复媒体组并分类：能够重新确认的相机媒体进入 `second_stage_library_root`；截图和录屏进入 `screen_root`；下载或来源不明的媒体进入 `other_media_root`；时间、关联或格式问题进入 `repair_media_root`。确认的整组重复媒体进入 `second_stage_duplicate_root`。 |
-| 3. 主库重复检查（按需） | `organize_gallery_exact_duplicates.py` | 扫描你指定的 `main_library_root` 内目录，比较内容及伴随信息，把确认的冗余副本移入 `duplicate_root` 并保留原相对路径。`--apply` 也可能合并 XMP 标注、清理不必要的文件名复制编号；因此务必先检查预览并保留备份。 |
-| 4. JPEG 时间修复（按需） | `repair_photo_metadata.py` | 只针对符合脚本证据规则的 JPEG。修复前备份到 `metadata_backup_root`，在 `metadata_work_root` 制作和验证候选文件；无法自动修复且需要人工核对的照片进入 `metadata_review_root`，并在那里生成报告。修复成功的原照片留在原位置。 |
+| 1. Main organizer | `organize_gallery_media.py` | Scans a specified source, reads filenames, metadata, and origin evidence, and groups Live Photos with companion files. Confirmed camera media goes to `main_library_root`. Clear screenshots, screen recordings, downloads, and uncertain files stay in the source. Confirmed exact duplicates go to `duplicate_root`; alternate formats of the same image go to `format_variant_duplicate_root`. It does not overwrite a file because of a name collision. |
+| 2. Remaining media | `organize_leftover_media.py` | Regroups files left in a specified source. Camera media it can confirm goes to `second_stage_library_root`; screenshots and screen recordings go to `screen_root`; downloads and uncertain-origin media go to `other_media_root`; date, association, and format problems go to `repair_media_root`. Confirmed duplicate groups go to `second_stage_duplicate_root`. |
+| 3. Main-library duplicate review (optional) | `organize_gallery_exact_duplicates.py` | Scans a specified directory inside `main_library_root`, compares content and companion evidence, and moves confirmed redundant copies to `duplicate_root` while preserving their original relative paths. With `--apply`, it may also merge XMP annotations and remove unnecessary copy-number suffixes from filenames. Keep a backup and inspect the preview. |
+| 4. JPEG capture-time repair (optional) | `repair_photo_metadata.py` | Processes only JPEGs matching its evidence rules. It backs up originals to `metadata_backup_root`, builds and verifies candidates in `metadata_work_root`, moves unresolved photos requiring manual review to `metadata_review_root`, and writes a CSV report there. Successfully repaired originals remain in place. |
 
-第一步只有在 `--apply` 后**没有失败项**，且来源正好是 `source_stage0_root` 的**直接子目录**时，才把整个来源目录移到 `completed_source_root`；里面未能整理的文件会一起保留，随后可以把该归档目录交给第二阶段处理。其他来源也能运行主脚本，但 `--apply` 在移动可处理文件后会报告阶段归档失败；因此需要完整执行这一流程时，请使用阶段0的直接子目录。
+After step 1 applies without failures, it archives the **entire** source directory from an immediate child of `source_stage0_root` to `completed_source_root`. Files it skipped remain in that archived directory and can be passed to step 2. The main script can process other source directories, but an apply there may move eligible files and then report that stage archiving failed. Use an immediate stage 0 child for the complete workflow.
 
-识别规则是保守的：明确截图或录屏不会被当作相机照片；单凭 PNG 扩展名也不会认定为截图。文件名、目录名、元数据和来源证据可能共同影响判断。无法确认关联或目标有冲突时，脚本会报告并尽量保持原位。
+The identification rules are conservative. A clear screenshot or screen recording is not treated as a camera photo; a PNG extension alone does not prove that a file is a screenshot. Filenames, parent folders, metadata, and origin evidence all matter. When associations or destinations cannot be confirmed safely, the scripts report the issue and try to leave the files in place.
 
-## 配置：每个非工具选项的含义
+## Configuration reference
 
-用文本编辑器修改 [config.ini](config.ini) 等号右边的值即可，不需要改 Python。路径有空格也不用加引号；`/` 或 `~` 开头的路径按完整路径使用，其他路径相对下表所列的上级目录。改 `backup_root` 会带动所有相对路径；改 `gallery_root` 或 `inbox_root` 会带动各自的下级相对路径。也可以给任一项直接粘贴完整路径。
+Edit values after `=` in [config.ini](config.ini); you do not need to edit Python. Paths with spaces need no quotes. Paths beginning with `/` or `~` are absolute. Other paths are relative to the parent shown below. Changing `backup_root` moves all relative paths; changing `gallery_root` or `inbox_root` moves their relative children. Any field can instead contain a pasted absolute path.
+
+### `[general]`
+
+| Setting | Values | Purpose |
+| --- | --- | --- |
+| `language` | `zh` or `en` | Terminal language. `zh` is the default and preserves the Chinese interface. |
 
 ### `[paths]`
 
-| 配置项 | 相对目录 | 用途 |
+| Setting | Relative to | Purpose |
 | --- | --- | --- |
-| `backup_root` | 配置文件所在目录 | 所有脚本允许的媒体来源及分类目标的总目录，也是相对路径的顶层基准。通常填一个完整路径。 |
-| `gallery_root` | `backup_root` | 图库及分类结果的上级目录。 |
-| `main_library_root` | `gallery_root` | 主整理脚本确认的相机媒体目标，也是主库重复检查的范围。 |
-| `inbox_root` | `backup_root` | 阶段0与阶段1的上级目录。 |
-| `source_stage0_root` | `inbox_root` | 主脚本完成后可自动归档的来源目录上级；运行时仍须指定其中一个直接子目录。 |
-| `completed_source_root` | `inbox_root` | 主脚本无失败后接收整个阶段0来源子目录。 |
-| `second_stage_library_root` | `gallery_root` | 第二阶段重新确认的相机媒体目标。 |
-| `duplicate_root` | `gallery_root` | 主脚本及主库重复检查使用的重复文件目录。 |
-| `format_variant_duplicate_root` | `duplicate_root` | 主脚本确认的同图非首选格式隔离目录。 |
-| `second_stage_duplicate_root` | `duplicate_root` | 第二阶段确认的整组重复媒体隔离目录。 |
-| `other_media_root` | `gallery_root` | 第二阶段的下载、来源不明等普通媒体分类目录。 |
-| `repair_media_root` | `gallery_root` | 第二阶段的拍摄时间、sidecar 关联及格式等问题分类目录。 |
-| `screen_root` | `gallery_root` | 第二阶段确认的截图和录屏目标目录。 |
-| `metadata_review_root` | `gallery_root` | JPEG 时间修复时的人工核对文件与 CSV 报告。 |
-| `metadata_backup_root` | `gallery_root` | JPEG 时间修复前生成的原文件备份；脚本不会自动删除备份。 |
-| `metadata_work_root` | `gallery_root` | JPEG 时间修复的临时工作位置；结束后尝试清理空目录。 |
-| `hash_cache_db` | `backup_root` | SHA-256 缓存数据库文件，只影响重复检查速度；默认设在用户缓存目录。 |
+| `backup_root` | Directory containing `config.ini` | Boundary for media sources and classification destinations. Usually an absolute path. |
+| `gallery_root` | `backup_root` | Parent of the library and classification outputs. |
+| `main_library_root` | `gallery_root` | Camera media destination for the main script; scope for main-library duplicate review. |
+| `inbox_root` | `backup_root` | Parent of stage 0 and stage 1. |
+| `source_stage0_root` | `inbox_root` | Parent of input batches eligible for automatic archiving. Specify one immediate child when running. |
+| `completed_source_root` | `inbox_root` | Receives the whole stage 0 batch after a run without failures. |
+| `second_stage_library_root` | `gallery_root` | Camera media confirmed during stage two. |
+| `duplicate_root` | `gallery_root` | Duplicate quarantine used by the main script and main-library review. |
+| `format_variant_duplicate_root` | `duplicate_root` | Alternate image formats confirmed by the main script. |
+| `second_stage_duplicate_root` | `duplicate_root` | Whole duplicate media groups found in stage two. |
+| `other_media_root` | `gallery_root` | Downloads and uncertain-origin media classified in stage two. |
+| `repair_media_root` | `gallery_root` | Stage-two media with capture-time, sidecar association, or format problems. |
+| `screen_root` | `gallery_root` | Confirmed screenshots and screen recordings found in stage two. |
+| `metadata_review_root` | `gallery_root` | Photos needing manual JPEG metadata review and the CSV reports. |
+| `metadata_backup_root` | `gallery_root` | Original-file backups made before JPEG metadata repair; not automatically deleted. |
+| `metadata_work_root` | `gallery_root` | Temporary JPEG repair work; empty folders are cleaned up afterward when possible. |
+| `hash_cache_db` | `backup_root` | SHA-256 cache file. Deleting it affects speed only; the default is in the user's cache folder. |
 
-第二阶段**没有固定的来源目录配置**：运行时指定要处理的目录，例如阶段1中仍有文件的批次。`[tools]` 是外部程序位置；一般可以保持空白，脚本会从系统查找。
+The second-stage source is **not** fixed in the configuration: specify the directory when running that script, such as an archived stage 1 batch. `[tools]` contains external executable locations. Usually leave them blank to search the system.
 
 ### `[metadata_repair]`
 
-这些选项只影响 `repair_photo_metadata.py`。`utc_offset`、`auto_from`、`auto_through` 必须一起填写，脚本才允许执行写入。请只填写你能确认适用于这批照片的时区和日期范围。
+These settings affect only `repair_photo_metadata.py`. Set `utc_offset`, `auto_from`, and `auto_through` together before a write is allowed. Use only a time zone and date range you have confirmed for the photos.
 
-| 配置项 | 格式 | 用途 |
+| Setting | Format | Purpose |
 | --- | --- | --- |
-| `utc_offset` | `+08:00`、`-05:30` 等 | 待修复照片拍摄地的 UTC 时差；会写入 EXIF 时区字段。 |
-| `auto_from` | `YYYYMMDD` | 允许自动修复的第一天，包含这天。 |
-| `auto_through` | `YYYYMMDD` | 允许自动修复的最后一天，包含这天。 |
-| `review_months` | `YYYYMM`，多个用逗号分隔 | 即使在日期范围内，这些月份也转为人工核对，不自动修复。可留空。 |
-| `confirmed_gps_derivative_filename` | 完整文件名 | 某张已人工核实的衍生照片。只在具有对应 GPS 证据时启用特殊规则；一般留空。 |
-| `confirmed_gps_derivative_utc` | `YYYYMMDDTHHMMSSZ` | 上述照片的已核实 GPS UTC 时刻，须和文件名一起填写；一般留空。 |
-| `validated_filename_sequence` | 完整文件名，多个用逗号分隔 | 已逐张核实文件名时间的照片清单；一般留空。 |
+| `utc_offset` | `+08:00`, `-05:30`, etc. | Confirmed capture UTC offset, written to EXIF time-zone fields. |
+| `auto_from` | `YYYYMMDD` | First eligible day, inclusive. |
+| `auto_through` | `YYYYMMDD` | Last eligible day, inclusive. |
+| `review_months` | Comma-separated `YYYYMM` values | Months kept for manual review even within the eligible range; may be blank. |
+| `confirmed_gps_derivative_filename` | Full filename | A personally verified derivative used by a special GPS evidence rule; usually blank. |
+| `confirmed_gps_derivative_utc` | `YYYYMMDDTHHMMSSZ` | Verified GPS UTC time for that derivative; set together with its filename. |
+| `validated_filename_sequence` | Comma-separated full filenames | Photos whose filename times have been individually verified; usually blank. |
 
-## 运行顺序示例
+## Example run order
 
-先在 [config.ini](config.ini) 设置自己的 `backup_root` 和目标位置。下面的命令把一个位于阶段0的批次交给主脚本；路径只是示例，请换成实际路径。省略来源参数时，主脚本和第二阶段脚本会进入交互界面。
+Set your `backup_root` and destinations in [config.ini](config.ini) first. Replace these example paths with the real batch path. Omitting a source opens the interactive interface for the main and second-stage scripts.
 
 ```sh
-python3 organize_gallery_media.py "/实际路径/Incoming/Stage0/一批待整理照片"
-python3 organize_gallery_media.py "/实际路径/Incoming/Stage0/一批待整理照片" --apply
-python3 organize_leftover_media.py "/实际路径/Incoming/Stage1/一批待整理照片"
-python3 organize_leftover_media.py "/实际路径/Incoming/Stage1/一批待整理照片" --apply
+python3 organize_gallery_media.py "/actual/path/Incoming/Stage0/Batch A"
+python3 organize_gallery_media.py "/actual/path/Incoming/Stage0/Batch A" --apply
+python3 organize_leftover_media.py "/actual/path/Incoming/Stage1/Batch A"
+python3 organize_leftover_media.py "/actual/path/Incoming/Stage1/Batch A" --apply
 ```
 
-只有确认预览中的目标路径后再执行 `--apply`。主库重复检查和 JPEG 时间修复是另外的按需步骤，不会由上述命令自动触发。JPEG 时间修复的 `--tag-test-only` 和 `--repair-test-only` 也会写入实际文件。
+Check the preview destinations before applying. Main-library duplicate review and JPEG capture-time repair are optional separate steps; the commands above do not start them. `--tag-test-only` and `--repair-test-only` in the JPEG repair script also write to real files.
