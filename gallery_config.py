@@ -1,50 +1,124 @@
-"""Edit this file to choose media directories and optional command locations.
+"""Load the user-editable config.ini for all gallery scripts."""
+from __future__ import annotations
 
-All scripts use these shared paths. Defaults stay in the current user's Pictures
-folder so a fresh checkout contains no personal or machine-specific media paths.
-Run scripts without --apply first to preview changes.
-"""
+from configparser import ConfigParser
+from datetime import datetime, timedelta, timezone
+import os
 from pathlib import Path
+import re
 import shutil
-from datetime import datetime
 
-# Change this to the parent directory that contains all sources and destinations.
-BACKUP_ROOT = Path.home() / "Pictures" / "GalleryOrganizer"
-GALLERY_ROOT = BACKUP_ROOT / "Gallery"
-MAIN_LIBRARY_ROOT = GALLERY_ROOT / "Main"
-INBOX_ROOT = BACKUP_ROOT / "Incoming"
-SOURCE_STAGE0_ROOT = INBOX_ROOT / "Stage0"
-COMPLETED_SOURCE_ROOT = INBOX_ROOT / "Stage1"
-SECOND_STAGE_INBOX_ROOT = INBOX_ROOT / "Unsorted"
-SECOND_STAGE_LIBRARY_ROOT = GALLERY_ROOT / "SortedFromUnsorted"
-DUPLICATE_ROOT = GALLERY_ROOT / "Duplicate"
-FORMAT_VARIANT_DUPLICATE_ROOT = DUPLICATE_ROOT / "FormatVariants"
-SECOND_STAGE_DUPLICATE_ROOT = DUPLICATE_ROOT / "Unsorted"
-OTHER_MEDIA_ROOT = GALLERY_ROOT / "OtherMedia"
-REPAIR_MEDIA_ROOT = GALLERY_ROOT / "NeedsRepair"
-SCREEN_ROOT = GALLERY_ROOT / "Screenshots"
-METADATA_REVIEW_ROOT = GALLERY_ROOT / "MetadataReview"
-METADATA_BACKUP_ROOT = GALLERY_ROOT / "MetadataRepairBackups"
-METADATA_WORK_ROOT = GALLERY_ROOT / "MetadataRepairWork"
-HASH_CACHE_DB = Path.home() / "Library" / "Caches" / "GalleryOrganizer" / "sha256-cache.sqlite3"
+CONFIG_FILE = Path(__file__).with_name("config.ini")
+_parser = ConfigParser(interpolation=None)
+if not _parser.read(CONFIG_FILE, encoding="utf-8"):
+    raise FileNotFoundError(f"找不到配置文件：{CONFIG_FILE}")
 
-# Optional command overrides: replace the executable name with an absolute path.
-XATTR_TOOL = shutil.which("xattr") or "/usr/bin/xattr"
-DITTO_TOOL = shutil.which("ditto") or "/usr/bin/ditto"
-FILE_TOOL = shutil.which("file") or "/usr/bin/file"
-SIPS_TOOL = shutil.which("sips") or "/usr/bin/sips"
-EXIFTOOL_TOOL = shutil.which("exiftool") or "exiftool"
-HEIF_CONVERT_TOOL = shutil.which("heif-convert") or "heif-convert"
-FFMPEG_TOOL = shutil.which("ffmpeg") or "ffmpeg"
 
-# Optional evidence for a particular photo collection. Leave empty by default.
-CONFIRMED_GPS_DERIVATIVE_FILENAME = ""
-CONFIRMED_GPS_DERIVATIVE_UTC = None
-VALIDATED_FILENAME_SEQUENCE = set()
+def _value(section: str, key: str) -> str:
+    try:
+        value = _parser[section][key].strip()
+    except KeyError as exc:
+        raise ValueError(f"config.ini 缺少 [{section}] {key}") from exc
+    return value
 
-# Metadata repair needs a confirmed local timezone. None disables automatic repair.
-# Example: UTC+8 -> 8, UTC-5 -> -5. Limit the dates for which this is known.
-REPAIR_UTC_OFFSET_HOURS = None
-REPAIR_AUTO_FROM = None  # e.g. datetime(2020, 1, 1)
-REPAIR_AUTO_UNTIL = None  # e.g. datetime(2024, 7, 1), exclusive
-REPAIR_REVIEW_MONTHS = set()  # e.g. {(2018, 9)}
+
+def _path(key: str, *, root: Path | None = None) -> Path:
+    value = _value("paths", key)
+    if not value:
+        raise ValueError(f"config.ini 的 [paths] {key} 不能为空")
+    path = Path(os.path.expandvars(value)).expanduser()
+    if not path.is_absolute():
+        path = (root or CONFIG_FILE.parent) / path
+    return path.resolve(strict=False)
+
+
+def _date(key: str) -> datetime | None:
+    value = _value("metadata_repair", key)
+    if not value:
+        return None
+    if not re.fullmatch(r"\d{8}", value):
+        raise ValueError(f"config.ini 的 {key} 请填写 YYYYMMDD")
+    try:
+        return datetime.strptime(value, "%Y%m%d")
+    except ValueError as exc:
+        raise ValueError(f"config.ini 的 {key} 不是有效日期：{value}") from exc
+
+
+def _utc_offset() -> int | None:
+    value = _value("metadata_repair", "utc_offset")
+    if not value:
+        return None
+    match = re.fullmatch(r"([+-])(\d{2}):(\d{2})", value)
+    if not match:
+        raise ValueError("config.ini 的 utc_offset 请填写 +08:00 这样的时区")
+    hours, minutes = int(match[2]), int(match[3])
+    if hours > 23 or minutes > 59:
+        raise ValueError(f"config.ini 的 utc_offset 无效：{value}")
+    offset = (hours * 60 + minutes) * (1 if match[1] == "+" else -1)
+    try:
+        timezone(timedelta(minutes=offset))
+    except ValueError as exc:
+        raise ValueError(f"config.ini 的 utc_offset 无效：{value}") from exc
+    return offset
+
+
+def _tool(key: str, executable: str, fallback: str | None = None) -> str:
+    value = _value("tools", key)
+    return value or shutil.which(executable) or fallback or executable
+
+
+BACKUP_ROOT = _path("backup_root")
+GALLERY_ROOT = _path("gallery_root", root=BACKUP_ROOT)
+MAIN_LIBRARY_ROOT = _path("main_library_root", root=BACKUP_ROOT)
+INBOX_ROOT = _path("inbox_root", root=BACKUP_ROOT)
+SOURCE_STAGE0_ROOT = _path("source_stage0_root", root=BACKUP_ROOT)
+COMPLETED_SOURCE_ROOT = _path("completed_source_root", root=BACKUP_ROOT)
+SECOND_STAGE_INBOX_ROOT = _path("second_stage_inbox_root", root=BACKUP_ROOT)
+SECOND_STAGE_LIBRARY_ROOT = _path("second_stage_library_root", root=BACKUP_ROOT)
+DUPLICATE_ROOT = _path("duplicate_root", root=BACKUP_ROOT)
+FORMAT_VARIANT_DUPLICATE_ROOT = _path("format_variant_duplicate_root", root=BACKUP_ROOT)
+SECOND_STAGE_DUPLICATE_ROOT = _path("second_stage_duplicate_root", root=BACKUP_ROOT)
+OTHER_MEDIA_ROOT = _path("other_media_root", root=BACKUP_ROOT)
+REPAIR_MEDIA_ROOT = _path("repair_media_root", root=BACKUP_ROOT)
+SCREEN_ROOT = _path("screen_root", root=BACKUP_ROOT)
+METADATA_REVIEW_ROOT = _path("metadata_review_root", root=BACKUP_ROOT)
+METADATA_BACKUP_ROOT = _path("metadata_backup_root", root=BACKUP_ROOT)
+METADATA_WORK_ROOT = _path("metadata_work_root", root=BACKUP_ROOT)
+HASH_CACHE_DB = _path("hash_cache_db", root=BACKUP_ROOT)
+
+XATTR_TOOL = _tool("xattr", "xattr", "/usr/bin/xattr")
+DITTO_TOOL = _tool("ditto", "ditto", "/usr/bin/ditto")
+FILE_TOOL = _tool("file", "file", "/usr/bin/file")
+SIPS_TOOL = _tool("sips", "sips", "/usr/bin/sips")
+EXIFTOOL_TOOL = _tool("exiftool", "exiftool")
+HEIF_CONVERT_TOOL = _tool("heif_convert", "heif-convert")
+FFMPEG_TOOL = _tool("ffmpeg", "ffmpeg")
+
+REPAIR_UTC_OFFSET_MINUTES = _utc_offset()
+REPAIR_OFFSET_TEXT = _value("metadata_repair", "utc_offset") or "+00:00"
+REPAIR_AUTO_FROM = _date("auto_from")
+_through = _date("auto_through")
+REPAIR_AUTO_UNTIL = _through + timedelta(days=1) if _through is not None else None
+if REPAIR_AUTO_FROM and _through and REPAIR_AUTO_FROM > _through:
+    raise ValueError("config.ini 的 auto_from 晚于 auto_through")
+_months = _value("metadata_repair", "review_months")
+REPAIR_REVIEW_MONTHS: set[tuple[int, int]] = set()
+for _month in filter(None, (item.strip() for item in _months.split(","))):
+    if not re.fullmatch(r"\d{6}", _month) or not 1 <= int(_month[4:]) <= 12:
+        raise ValueError(f"config.ini 的 review_months 请填写 YYYYMM：{_month}")
+    REPAIR_REVIEW_MONTHS.add((int(_month[:4]), int(_month[4:])))
+
+CONFIRMED_GPS_DERIVATIVE_FILENAME = _value("metadata_repair", "confirmed_gps_derivative_filename")
+_gps_utc = _value("metadata_repair", "confirmed_gps_derivative_utc")
+if _gps_utc:
+    try:
+        CONFIRMED_GPS_DERIVATIVE_UTC = datetime.strptime(_gps_utc, "%Y%m%dT%H%M%SZ").replace(tzinfo=timezone.utc)
+    except ValueError as exc:
+        raise ValueError("config.ini 的 confirmed_gps_derivative_utc 请填写 YYYYMMDDTHHMMSSZ") from exc
+else:
+    CONFIRMED_GPS_DERIVATIVE_UTC = None
+VALIDATED_FILENAME_SEQUENCE = {
+    item.strip().lower()
+    for item in _value("metadata_repair", "validated_filename_sequence").split(",")
+    if item.strip()
+}

@@ -4,9 +4,10 @@
 
 ## 首次使用
 
-1. 打开 [gallery_config.py](gallery_config.py)，设置 `BACKUP_ROOT` 以及各来源、图库、重复文件、缓存目录。所有脚本共用这一个配置文件；需要特殊工具位置时也在此修改。
-2. 先运行脚本预览，例如 `python3 organize_gallery_media.py /path/to/source`。确认输出与目标目录后，才加 `--apply` 执行。来源必须位于 `BACKUP_ROOT` 下。
-3. `repair_photo_metadata.py` 具有按相机时间修改 EXIF 的专用规则。使用前须在配置文件中明确设置 `REPAIR_UTC_OFFSET_HOURS` 和适用日期范围。默认不会自动修复任何时间；人工证据列表也默认为空。
+1. 用文本编辑器打开 [config.ini](config.ini)。在 `backup_root =` 后直接粘贴你的媒体总目录路径，例如 `/Volumes/My Photos`；路径有空格也无需加引号。其他路径可以填完整路径，也可以填相对 `backup_root` 的路径。
+2. 按需要修改图库、来源、重复文件和缓存目录。`[tools]` 中的命令路径通常可以留空，脚本会从系统查找。
+3. 先运行脚本预览，例如 `python3 organize_gallery_media.py /path/to/source`。确认输出与目标目录后，才加 `--apply` 执行。来源必须位于 `backup_root` 下。
+4. 若要运行 `repair_photo_metadata.py`，在 `[metadata_repair]` 填写已确认的时区（如 `+08:00`）、起止日期（如 `20200101`、`20241231`）。日期范围包含首尾两天。三项留空时，修复脚本禁止写入。
 
 | 脚本 | 用途 |
 | --- | --- |
@@ -15,4 +16,4 @@
 | `organize_gallery_exact_duplicates.py` | 检查并隔离主图库的精确重复副本 |
 | `repair_photo_metadata.py` | 根据可验证的证据修复 JPEG 拍摄时间 |
 
-脚本默认预览；仅 `--apply` 会移动文件或改写元数据。建议先在少量复制的样本上试运行。
+脚本默认预览；仅 `--apply` 会移动文件或改写元数据。建议先在少量复制的样本上试运行。用户只需编辑 `config.ini`，无需修改 `gallery_config.py`。

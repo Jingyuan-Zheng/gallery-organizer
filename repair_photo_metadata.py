@@ -21,7 +21,7 @@ replaced automatically. Obvious screenshots are skipped.
 
 Timezone rule (dataset-specific)
 --------------------------------
-- Set the confirmed UTC offset and applicable date range in gallery_config.py.
+- Set the confirmed UTC offset and applicable date range in config.ini.
 - Without a configured offset, all candidates require manual review.
 
 High-confidence evidence rules
@@ -75,7 +75,7 @@ Safety
 - Fresh backup before every attempted EXIF write; backups are never auto-deleted.
 - Operational repair failures stay in place.
 - Only genuinely unresolved/evidence-insufficient candidates may be moved to:
-      the METADATA_REVIEW_ROOT configured in gallery_config.py
+      the METADATA_REVIEW_ROOT configured in config.ini
 - Repaired files remain where they are; run Gallery Organizer afterwards.
 
 Usage
@@ -120,14 +120,12 @@ from gallery_config import (
     CONFIRMED_GPS_DERIVATIVE_FILENAME, CONFIRMED_GPS_DERIVATIVE_UTC,
     VALIDATED_FILENAME_SEQUENCE as VALIDATED_2016_FILENAME_SEQUENCE,
     XATTR_TOOL as XATTR_TOOL_PATH, DITTO_TOOL as DITTO_TOOL_PATH,
-    EXIFTOOL_TOOL, REPAIR_UTC_OFFSET_HOURS, REPAIR_AUTO_FROM,
+    EXIFTOOL_TOOL, REPAIR_UTC_OFFSET_MINUTES, REPAIR_OFFSET_TEXT, REPAIR_AUTO_FROM,
     REPAIR_AUTO_UNTIL, REPAIR_REVIEW_MONTHS,
 )
 SCRIPT_VERSION = "2026-08-18-2136-tui-timing"
 
-REPAIR_TZ = timezone(timedelta(hours=REPAIR_UTC_OFFSET_HOURS or 0))
-_offset_hours = REPAIR_UTC_OFFSET_HOURS or 0
-REPAIR_OFFSET_TEXT = f"{'+' if _offset_hours >= 0 else '-'}{abs(_offset_hours):02d}:00"
+REPAIR_TZ = timezone(timedelta(minutes=REPAIR_UTC_OFFSET_MINUTES or 0))
 
 RULE_A_MTIME_TOLERANCE_SECONDS = 90
 RULE_B_GPS_TOLERANCE_SECONDS = 2
@@ -424,7 +422,7 @@ def parse_mh_edit_time(path: Path) -> Optional[datetime]:
 
 
 def auto_timezone_is_known(filename_time: datetime) -> bool:
-    if REPAIR_UTC_OFFSET_HOURS is None:
+    if REPAIR_UTC_OFFSET_MINUTES is None or REPAIR_AUTO_FROM is None or REPAIR_AUTO_UNTIL is None:
         return False
     if REPAIR_AUTO_FROM is not None and filename_time < REPAIR_AUTO_FROM:
         return False
@@ -512,7 +510,7 @@ def decide_repair(e: Evidence, *, trust_compact_filename_time: bool = False) -> 
         return Decision(False, "no-filename-time", None, "文件名无法解析完整拍摄时间")
     if not auto_timezone_is_known(e.filename_time):
         return Decision(False, "timezone-review", None,
-                        "拍摄时区或日期范围未在 gallery_config.py 中确认，必须人工确认")
+                        "拍摄时区或日期范围未在 config.ini 中确认，必须人工确认")
 
     if trust_compact_filename_time and COMPACT_CAMERA_RE.match(e.path.stem):
         return Decision(
@@ -1172,8 +1170,8 @@ def run_once(args: argparse.Namespace) -> int:
     if source_error:
         print(f"错误：{source_error}", file=sys.stderr)
         return 2
-    if (args.apply or args.tag_test_only or args.repair_test_only) and REPAIR_UTC_OFFSET_HOURS is None:
-        print("错误：请先在 gallery_config.py 设置已确认的 REPAIR_UTC_OFFSET_HOURS。", file=sys.stderr)
+    if (args.apply or args.tag_test_only or args.repair_test_only) and (REPAIR_UTC_OFFSET_MINUTES is None or REPAIR_AUTO_FROM is None or REPAIR_AUTO_UNTIL is None):
+        print("错误：请先在 config.ini 设置拍摄时区和日期范围。", file=sys.stderr)
         return 2
 
     exiftool = require_exiftool()
@@ -1188,7 +1186,7 @@ def run_once(args: argparse.Namespace) -> int:
     print(f"源目录：{source}")
     print(f"待人工处理目录：{REVIEW_ROOT}")
     print("候选命名：IMG_YYYYMMDD_HHMMSS... / PANO_YYYYMMDD_HHMMSS... / IMGYYYYMMDDHHMMSS...")
-    print(f"元数据修复时区：{REPAIR_OFFSET_TEXT if REPAIR_UTC_OFFSET_HOURS is not None else '未配置，全部人工确认'}")
+    print(f"元数据修复时区：{REPAIR_OFFSET_TEXT if REPAIR_UTC_OFFSET_MINUTES is not None else '未配置，全部人工确认'}")
     print("规则 A：严格 IMG/PANO 文件名 + filesystem mtime 绝对时刻差 <= 90 秒")
     print("规则 B：Huawei + GPS 差 <= 2 秒 + ModifyDate 差 <= 5 秒")
     print("规则 C：IMG _mh 后缀为同日稍后编辑时间 -> 按文件名前半段拍摄时间")
